@@ -44,6 +44,7 @@ interface Options {
     singleWhiteList?: string[];
   }
   toolbarTable?: boolean;
+  scale?: number;
 }
 
 type Line = TableCellBlock | TableHeader | ListContainer;
@@ -57,6 +58,7 @@ class Table extends Module {
   tableMenus: TableMenus;
   tableSelect: TableSelect;
   options: Options;
+  public scale: number;
   
   static keyboardBindings: { [propName: string]: BindingObject };
   
@@ -90,6 +92,7 @@ class Table extends Module {
     quill.root.addEventListener('mousedown', this.handleMousedown.bind(this));
     quill.root.addEventListener('scroll', this.handleScroll.bind(this));
     this.registerToolbarTable(options?.toolbarTable);
+    this.scale = options.scale !== undefined ? options.scale : 1;
   }
 
   clearHistorySelected() {
