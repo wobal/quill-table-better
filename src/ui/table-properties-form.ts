@@ -91,14 +91,12 @@ class TablePropertiesForm {
   borderForm: HTMLElement[];
   saveButton: HTMLButtonElement;
   form: HTMLDivElement;
-  tableBetter: QuillTableBetter;
-  constructor(tableMenus: TableMenus, options?: Options, tableBetter?: QuillTableBetter) {
+  constructor(tableMenus: TableMenus, options?: Options) {
     this.tableMenus = tableMenus;
     this.options = options;
     this.attrs = { ...options.attribute };
     this.borderForm = [];
-    this.saveButton = null;
-    this.tableBetter = tableBetter;
+    this.saveButton = null;    
     this.form = this.createPropertiesForm(options); 
   }
 
@@ -184,7 +182,7 @@ class TablePropertiesForm {
     const container = document.createElement('ul');
     const fragment = document.createDocumentFragment();
     container.classList.add('color-list');
-    const colors = this.tableBetter.colors.length == 0 ? COLOR_LIST : (typeof this.tableBetter.colors[0] === 'string' ? this.tableBetter.colors.map(item => ({value: item, describe: ''}) : this.tableBetter.colors);
+    const colors = this.options.colors.length == 0 ? COLOR_LIST : (typeof this.options.colors[0] === 'string' ? this.options.colors.map(item => ({value: item, describe: ''}) : this.options.colors);
     for (const { value, describe } of COLOR_LIST) {
       const li = document.createElement('li');
       const tooltip = createTooltip(useLanguage(describe));
