@@ -60,7 +60,7 @@ class Table extends Module {
   tableSelect: TableSelect;
   options: Options;
   public scale: number;
-  public colors: [];
+  public colors: string[];
   
   static keyboardBindings: { [propName: string]: BindingObject };
   
