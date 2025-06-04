@@ -84,7 +84,7 @@ class CellSelection {
 
   clearSelected() {
     for (const td of this.selectedTds) {
-      td.classList && td.classList.remove('ql-cell-focused', 'ql-cell-selected');
+      !!td ? td.classList && td.classList.remove('ql-cell-focused', 'ql-cell-selected') : null;
     }
     this.selectedTds = [];
     this.startTd = null;
@@ -322,6 +322,7 @@ class CellSelection {
     this.endTd = startTd;
     this.selectedTds = [startTd];
     startTd.classList.add('ql-cell-focused');
+    if (!startTd) return;
     
     const handleMouseMove = (e: MouseEvent) => {
       const endTd = (e.target as Element).closest('td');
