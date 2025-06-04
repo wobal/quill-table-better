@@ -190,11 +190,13 @@ class TablePropertiesForm {
           : COLOR_LIST;
     for (const { value, describe } of colors) {
       const li = document.createElement('li');
-      const tooltip = createTooltip(useLanguage(describe));
       li.setAttribute('data-color', value);
-      li.classList.add('ql-table-tooltip-hover');
       setElementProperty(li, { 'background-color': value });
-      li.appendChild(tooltip);
+      if (describe != '') {
+        const tooltip = createTooltip(useLanguage(describe));
+        li.classList.add('ql-table-tooltip-hover');
+        li.appendChild(tooltip);
+      }
       fragment.appendChild(li);
     }
     container.appendChild(fragment);
