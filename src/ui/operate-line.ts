@@ -42,7 +42,7 @@ class OperateLine {
     this.dragTable = null;
     this.direction = null; // 1.level 2.vertical
     this.tableBetter = tableBetter;
-    this.quill.root.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    this.quill.root.addEventListener('mousemove', this.handleMouseMove.bind(this));    
   }
 
   createDragBlock() {
@@ -69,6 +69,7 @@ class OperateLine {
     const line = document.createElement('div');
     container.classList.add('ql-operate-line-container');
     const { containerProps, lineProps } = this.getProperty(this.options);
+    
     setElementProperty(container, containerProps);
     setElementProperty(line, lineProps);
     container.appendChild(line);
@@ -86,11 +87,22 @@ class OperateLine {
   }
 
   getDragTableProperty(table: Element) {
-    const { left, top, width, height } = table.getBoundingClientRect();
-    const containerRect = this.quill.container.getBoundingClientRect();
+    const scale = this.tableBetter.scale;
+    let { left, top, width, height } = table.getBoundingClientRect();
+    left = ~~((left / (scale * 100)) * 100);
+    top = ~~((top / (scale * 100)) * 100);
+    width = ~~((width / (scale * 100)) * 100);
+    height = ~~((height / (scale * 100)) * 100);
+    
+    let containerRect = this.quill.container.getBoundingClientRect();
+    let sContainerRect = {
+      top: ~~((containerRect.top / (scale * 100)) * 100),
+      left: ~~((containerRect.left / (scale * 100)) * 100)
+    }
+    
     return {
-      left: `${left - containerRect.left}px`,
-      top: `${top - containerRect.top}px`,
+      left: `${left - sContainerRect.left}px`,
+      top: `${top - sContainerRect.top}px`,
       width: `${width}px`,
       height: `${height}px`,
       display: 'block'
@@ -120,29 +132,55 @@ class OperateLine {
   }
 
   getProperty(options: Options) {
-    const containerRect = this.quill.container.getBoundingClientRect();
+    const scale = this.tableBetter.scale;
+    let containerRect = this.quill.container.getBoundingClientRect();
+    let sContainerRect = {
+      top: ~~((containerRect.top / (scale * 100)) * 100),
+      bottom: ~~((containerRect.bottom / (scale * 100)) * 100),
+      left: ~~((containerRect.left / (scale * 100)) * 100),
+      height: ~~((containerRect.height / (scale * 100)) * 100),
+      width: ~~((containerRect.width / (scale * 100)) * 100)
+    }
+    
     const { tableNode, cellNode, mousePosition } = options;
-    const { clientX, clientY } = mousePosition;
-    const tableRect = tableNode.getBoundingClientRect();
-    const cellRect = cellNode.getBoundingClientRect();
-    const x = cellRect.left + cellRect.width;
-    const y = cellRect.top + cellRect.height;
+    let { clientX, clientY } = mousePosition;
+    clientX = ~~((clientX / (scale * 100)) * 100);
+    clientY = ~~((clientY / (scale * 100)) * 100);
+    
+    let tableRect = tableNode.getBoundingClientRect();
+    let sTableRect = {
+      right: ~~((tableRect.right / (scale * 100)) * 100),
+      bottom: ~~((tableRect.bottom / (scale * 100)) * 100)
+    };
+    
+    let cellRect = cellNode.getBoundingClientRect();
+    let sCellRect = {
+      left: ~~((cellRect.left / (scale * 100)) * 100),
+      width: ~~((cellRect.width / (scale * 100)) * 100),
+      top: ~~((cellRect.top / (scale * 100)) * 100),
+      height: ~~((cellRect.height / (scale * 100)) * 100)
+    };
+    
+    const x = sCellRect.left + sCellRect.width;
+    const y = sCellRect.top + sCellRect.height;
+    
     const dragBlockProps = {
       width: `${DRAG_BLOCK_WIDTH}px`,
       height: `${DRAG_BLOCK_HEIGHT}px`,
-      top: `${tableRect.bottom - containerRect.top}px`,
-      left: `${tableRect.right - containerRect.left}px`,
-      display: tableRect.bottom > containerRect.bottom ? 'none' : 'block'
+      top: `${sTableRect.bottom - sContainerRect.top}px`,
+      left: `${sTableRect.right - sContainerRect.left}px`,
+      display: sTableRect.bottom > sContainerRect.bottom ? 'none' : 'block'
     }
+
     if (Math.abs(x - clientX) <= 5) {
       this.direction = 'level';
       return {
         dragBlockProps,
         containerProps: {
           width: `${LINE_CONTAINER_WIDTH}px`,
-          height: `${containerRect.height}px`,
+          height: `${sContainerRect.height}px`,
           top: '0',
-          left: `${x - containerRect.left - LINE_CONTAINER_WIDTH / 2}px`,
+          left: `${x - sContainerRect.left - LINE_CONTAINER_WIDTH / 2}px`,
           display: 'flex',
           cursor: 'col-resize'
         },
@@ -156,9 +194,9 @@ class OperateLine {
       return {
         dragBlockProps,
         containerProps: {
-          width: `${containerRect.width}px`,
+          width: `${sContainerRect.width}px`,
           height: `${LINE_CONTAINER_HEIGHT}px`,
-          top: `${y - containerRect.top - LINE_CONTAINER_HEIGHT / 2}px`,
+          top: `${y - sContainerRect.top - LINE_CONTAINER_HEIGHT / 2}px`,
           left: '0',
           display: 'flex',
           cursor: 'row-resize'
@@ -185,13 +223,14 @@ class OperateLine {
   }
 
   handleMouseMove(e: MouseEvent) {
-    if (!this.quill.isEnabled()) return;
+    if (!this.quill.isEnabled()) return;    
     const tableNode = (e.target as Element).closest('table');
     const cellNode = (e.target as Element).closest('td');
     const mousePosition = {
       clientX: e.clientX,
       clientY: e.clientY
     }
+    
     if (!tableNode || !cellNode) {
       if (this.line && !this.drag) {
         this.hideLine();
@@ -205,7 +244,7 @@ class OperateLine {
       this.createOperateLine();
       this.createDragBlock();
     } else {
-      if (this.drag || !cellNode) return;
+      if (this.drag || !cellNode) return;      
       this.updateProperty(options);
     }
   }
@@ -227,20 +266,28 @@ class OperateLine {
   }
 
   setCellLevelRect(cell: Element, clientX: number) {
+    const scale = this.tableBetter.scale;
+    
     const { right } = cell.getBoundingClientRect();
-    const change = ~~(clientX - right);
+    let change = ~~(clientX - right);
     const colSum = this.getLevelColSum(cell);
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const colgroup = tableBlot.colgroup() as TableColgroup;
-    const bounds = tableBlot.domNode.getBoundingClientRect();
+    let bounds = tableBlot.domNode.getBoundingClientRect();
     if (colgroup) {
       const col = this.getCorrectCol(colgroup, colSum);
       const nextCol = col.next;
-      const formats = col.formats()[col.statics.blotName];
-      col.domNode.setAttribute('width', `${parseFloat(formats['width']) + change}`);
+      const formats = col.formats()[col.statics.blotName];      
+      let cWidth = ~~(((parseFloat(formats['width']) + change) / (scale * 100)) * 100);
+      let sWidth = `${cWidth}`;
+      
+      col.domNode.setAttribute('width', sWidth);
       if (nextCol) {
         const nextFormats = nextCol.formats()[nextCol.statics.blotName];
-        nextCol.domNode.setAttribute('width', `${parseFloat(nextFormats['width']) - change}`);
+        cWidth = ~~(((parseFloat(nextFormats['width']) - change) / (scale * 100)) * 100);
+        sWidth = `${cWidth}`;
+        
+        nextCol.domNode.setAttribute('width', sWidth);
       }
     } else {
       const isLastCell = cell.nextElementSibling == null;
@@ -250,7 +297,7 @@ class OperateLine {
         const cells = row.children;
         if (isLastCell) {
           const cell = cells[cells.length - 1];
-          const { width } = cell.getBoundingClientRect();
+          const { width } = cell.getBoundingClientRect();          
           preNodes.push([cell, `${~~(width + change)}`]);
           continue;
         }
@@ -268,12 +315,17 @@ class OperateLine {
           }
         }
       }
-      for (const [node, width] of preNodes) {
-        setElementAttribute(node, { width });
-        setElementProperty(node as HTMLElement, { width: `${width}px` });
+      for (let [node, width] of preNodes) {        
+        let cWidth = ~~((parseFloat(width) / (scale * 100)) * 100);
+        let sWidth = `${cWidth}px`;
+        
+        setElementAttribute(node, { width: cWidth.toString() });
+        setElementProperty(node as HTMLElement, { width: sWidth });
       }
     }
     if (cell.nextElementSibling == null) {
+      change = ~~((change / (scale * 100)) * 100);
+      bounds.width = ~~((bounds.width / (scale * 100)) * 100);
       updateTableWidth(tableBlot.domNode, bounds, change);
     }
   }
@@ -287,14 +339,15 @@ class OperateLine {
   }
 
   setCellsRect(cell: Element, changeX: number, changeY: number) {
+    const scale = this.tableBetter.scale;
     const rows = cell.parentElement.parentElement.children;
     const maxColNum = this.getMaxColNum(cell);
-    const averageX = changeX / maxColNum;
-    const averageY = changeY / rows.length;
+    const averageX = changeX / maxColNum;   
+    const averageY = changeY / rows.length;    
     const preNodes: [Element, string, string][] = [];
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const colgroup = tableBlot.colgroup() as TableColgroup;
-    const bounds = tableBlot.domNode.getBoundingClientRect();
+    let bounds = tableBlot.domNode.getBoundingClientRect();
     for (const row of rows) {
       const cells = row.children;
       for (const cell of cells) {
@@ -305,39 +358,57 @@ class OperateLine {
     }
     if (colgroup) {
       let col = colgroup.children.head;
-      for (const [node, , height] of preNodes) {
-        setElementAttribute(node, { height });
-        setElementProperty(node as HTMLElement, { height: `${height}px` });
+      for (const [node, , height] of preNodes) {        
+        let cHeight = ~~((parseFloat(height) / (scale * 100)) * 100);
+        let sHeight = `${cHeight}px`;
+        
+        setElementAttribute(node, { height: cHeight.toString() });
+        setElementProperty(node as HTMLElement, { height: sHeight });
       }
       while (col) {
-        const { width } = col.domNode.getBoundingClientRect();
+        let { width } = col.domNode.getBoundingClientRect();
+        width = ~~((width / (scale * 100)) * 100);
+        
         setElementAttribute(col.domNode, { width: `${Math.ceil(width + averageX)}` });
         col = col.next;
       }
     } else {
-      for (const [node, width, height] of preNodes) {
-        setElementAttribute(node, { width, height });
+      for (const [node, width, height] of preNodes) {        
+        let cWidth = ~~((parseFloat(width) / (scale * 100)) * 100);
+        let sWidth = `${cWidth}px`;
+        let cHeight = ~~((parseFloat(height) / (scale * 100)) * 100);
+        let sHeight = `${cHeight}px`;
+        
+        setElementAttribute(node, { width: cWidth.toString(), height: cHeight.toString() });
         setElementProperty(node as HTMLElement, {
-          width: `${width}px`,
-          height: `${height}px`
+          width: sWidth,
+          height: sHeight
         });
       }
     }
-    updateTableWidth(tableBlot.domNode, bounds, changeX);
+
+    let change = ~~((changeX / (scale * 100)) * 100);
+    bounds.width = ~~((bounds.width / (scale * 100)) * 100);
+    
+    updateTableWidth(tableBlot.domNode, bounds, change);
   }
 
   setCellVerticalRect(cell: Element, clientY: number) {
+    const scale = this.tableBetter.scale;
     const rowspan = ~~cell.getAttribute('rowspan') || 1;
     const cells = rowspan > 1 ? this.getVerticalCells(cell, rowspan) : cell.parentElement.children;
+    
     for (const cell of cells) {
       const { top } = cell.getBoundingClientRect();
-      const height = `${~~(clientY - top)}`;
-      setElementAttribute(cell, { height });
-      setElementProperty(cell as HTMLElement, { height: `${height}px` });
+      let sHeight = ~~((~~(clientY - top) / (scale * 100)) * 100);
+      let cHeight = `${sHeight}px`;
+       
+      setElementAttribute(cell, { height: sHeight.toString() });
+      setElementProperty(cell as HTMLElement, { height: cHeight });
     }
   }
 
-  toggleLineChildClass(isAdd: boolean) {
+  toggleLineChildClass(isAdd: boolean) {    
     const node = this.line.firstElementChild;
     if (isAdd) {
       node.classList.add('ql-operate-line');
@@ -349,8 +420,10 @@ class OperateLine {
   updateCell(node: Element) {
     if (!node) return;
     const isLine = this.isLine(node);
+    const scale = this.tableBetter.scale;
     const handleDrag = (e: MouseEvent) => {
       e.preventDefault();
+      
       if (this.drag) {
         if (isLine) {
           this.updateDragLine(e.clientX, e.clientY);
@@ -362,14 +435,15 @@ class OperateLine {
       }
     }
 
-    const handleMouseup = (e: MouseEvent) => {
-      e.preventDefault();
+    const handleMouseup = (e: MouseEvent) => {      
+      e.preventDefault();        
       const { cellNode, tableNode } = this.options;
-      if (isLine) {
+      
+      if (isLine) {        
         this.setCellRect(cellNode, e.clientX, e.clientY);
         this.toggleLineChildClass(false);
-      } else {
-        const { right, bottom } = tableNode.getBoundingClientRect();
+      } else {        
+        const { right, bottom } = tableNode.getBoundingClientRect();        
         const changeX = e.clientX - right;
         const changeY = e.clientY - bottom;
         this.setCellsRect(cellNode, changeX, changeY);
@@ -404,28 +478,53 @@ class OperateLine {
   }
 
   updateDragBlock(clientX: number, clientY: number) {
-    const containerRect = this.quill.container.getBoundingClientRect();
+    const scale = this.tableBetter.scale;
+    let sClientX = ~~((clientX / (scale * 100)) * 100);
+    let sClientY = ~~((clientY / (scale * 100)) * 100);
+    
+    let containerRect = this.quill.container.getBoundingClientRect();
+    let sContainerRect = {
+      top: ~~((containerRect.top / (scale * 100)) * 100),
+      left: ~~((containerRect.left / (scale * 100)) * 100)
+    };
+    
     this.dragBlock.classList.add('ql-operate-block-move');
     setElementProperty(this.dragBlock, {
-      top: `${~~(clientY - containerRect.top - DRAG_BLOCK_HEIGHT / 2)}px`,
-      left: `${~~(clientX - containerRect.left - DRAG_BLOCK_WIDTH / 2)}px`
+      top: `${~~(sClientY - sContainerRect.top - DRAG_BLOCK_HEIGHT / 2)}px`,
+      left: `${~~(sClientX - sContainerRect.left - DRAG_BLOCK_WIDTH / 2)}px`
     });
     this.updateDragTable(clientX, clientY);
   }
 
   updateDragLine(clientX: number, clientY: number) {
-    const containerRect = this.quill.container.getBoundingClientRect();
+    const scale = this.tableBetter.scale;
+    let sClientX = ~~((clientX / (scale * 100)) * 100);
+    let sClientY = ~~((clientY / (scale * 100)) * 100);
+    
+    let containerRect = this.quill.container.getBoundingClientRect();
+    let sContainerRect = {
+      top: ~~((containerRect.top / (scale * 100)) * 100),
+      left: ~~((containerRect.left / (scale * 100)) * 100)
+    };
+    
     if (this.direction === 'level') {
-      setElementProperty(this.line, { left: `${~~(clientX - containerRect.left - LINE_CONTAINER_WIDTH / 2)}px` });
+      setElementProperty(this.line, { left: `${~~(sClientX - sContainerRect.left - LINE_CONTAINER_WIDTH / 2)}px` });
     } else if (this.direction === 'vertical') {
-      setElementProperty(this.line, { top: `${(~~clientY - containerRect.top - LINE_CONTAINER_HEIGHT / 2)}px` });
+      setElementProperty(this.line, { top: `${~~(sClientY - sContainerRect.top - LINE_CONTAINER_HEIGHT / 2)}px` });
     }
   }
 
   updateDragTable(clientX: number, clientY: number) {
-    const { top, left } = this.dragTable.getBoundingClientRect();
-    const width = clientX - left;
-    const height = clientY - top;
+    const scale = this.tableBetter.scale;
+    let sClientX = ~~((clientX / (scale * 100)) * 100);
+    let sClientY = ~~((clientY / (scale * 100)) * 100);
+    
+    let { top, left } = this.dragTable.getBoundingClientRect();
+    top = ~~((top / (scale * 100)) * 100);
+    left = ~~((left / (scale * 100)) * 100);
+    
+    const width = sClientX - left;
+    const height = sClientY - top;
     setElementProperty(this.dragTable, {
       width: `${width}px`,
       height: `${height}px`,
@@ -436,7 +535,7 @@ class OperateLine {
   updateProperty(options: Options) {
     const { containerProps, lineProps, dragBlockProps } = this.getProperty(options);
     if (!containerProps || !lineProps) return;
-    this.options = options;
+    this.options = options;    
     setElementProperty(this.line, containerProps);
     setElementProperty(this.line.firstChild as HTMLElement, lineProps);
     setElementProperty(this.dragBlock, dragBlockProps);

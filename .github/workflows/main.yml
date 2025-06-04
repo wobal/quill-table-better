@@ -1,4 +1,4 @@
-name: Build and Minify Quill Table Better
+name: Build Quill Table Better & Publish
 
 on:
   push:
@@ -6,6 +6,11 @@ on:
     paths:
       - 'src/**'
   workflow_dispatch: # Ajout pour permettre le déclenchement manuel
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0, 1.0.0-beta.1)'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -25,6 +30,23 @@ jobs:
 
       - name: Compile with Webpack
         run: npm run build
+
+      - name: Force package name for npm publish
+        run: |
+          node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8')); pkg.name = 'wobal-quill-table-better'; fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2));"
+          echo "Package name forced to wobal-quill-table-better for publication."
+          
+      - name: Update package.json version
+        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
+        
+      - name: Authenticate with npm
+        run: |
+          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
