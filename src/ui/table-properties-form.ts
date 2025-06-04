@@ -96,7 +96,7 @@ class TablePropertiesForm {
     this.options = options;
     this.attrs = { ...options.attribute };
     this.borderForm = [];
-    this.saveButton = null;
+    this.saveButton = null;    
     this.form = this.createPropertiesForm(options); 
   }
 
@@ -182,13 +182,21 @@ class TablePropertiesForm {
     const container = document.createElement('ul');
     const fragment = document.createDocumentFragment();
     container.classList.add('color-list');
-    for (const { value, describe } of COLOR_LIST) {
+    const colors =
+      this.tableMenus.tableBetter.colors.length === 0
+        ? COLOR_LIST
+        : typeof this.tableMenus.tableBetter.colors[0] === 'string'
+          ? this.tableMenus.tableBetter.colors.map((item) => ({ value: item, describe: '' }))
+          : COLOR_LIST;
+    for (const { value, describe } of colors) {
       const li = document.createElement('li');
-      const tooltip = createTooltip(useLanguage(describe));
       li.setAttribute('data-color', value);
-      li.classList.add('ql-table-tooltip-hover');
       setElementProperty(li, { 'background-color': value });
-      li.appendChild(tooltip);
+      if (describe != '') {
+        const tooltip = createTooltip(useLanguage(describe));
+        li.classList.add('ql-table-tooltip-hover');
+        li.appendChild(tooltip);
+      }
       fragment.appendChild(li);
     }
     container.appendChild(fragment);
