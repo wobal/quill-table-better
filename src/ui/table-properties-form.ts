@@ -183,12 +183,12 @@ class TablePropertiesForm {
     const fragment = document.createDocumentFragment();
     container.classList.add('color-list');
     const colors =
-      this.options.colors.length === 0
+      this.tableMenus.tableBetter.colors.length === 0
         ? COLOR_LIST
-        : typeof this.options.colors[0] === 'string'
-          ? this.options.colors.map((item) => ({ value: item, describe: '' }))
+        : typeof this.tableMenus.tableBetter.colors[0] === 'string'
+          ? this.tableMenus.tableBetter.colors.map((item) => ({ value: item, describe: '' }))
           : COLOR_LIST;
-    for (const { value, describe } of COLOR_LIST) {
+    for (const { value, describe } of colors) {
       const li = document.createElement('li');
       const tooltip = createTooltip(useLanguage(describe));
       li.setAttribute('data-color', value);
