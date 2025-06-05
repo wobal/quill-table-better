@@ -318,11 +318,11 @@ class CellSelection {
     if (!table) return;
     this.tableBetter.tableMenus.destroyTablePropertiesForm();
     const startTd = (e.target as Element).closest('td');
+    if (!startTd) return;
     this.startTd = startTd;
     this.endTd = startTd;
     this.selectedTds = [startTd];
-    startTd.classList.add('ql-cell-focused');
-    if (!startTd) return;
+    startTd.classList.add('ql-cell-focused');    
     
     const handleMouseMove = (e: MouseEvent) => {
       const endTd = (e.target as Element).closest('td');
