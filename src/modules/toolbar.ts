@@ -13,6 +13,7 @@ import type {
 } from '../types';
 import { getCorrectCellBlot } from '../utils';
 import TableHeader from '../formats/header';
+import { Options } from '../quill-table-better';
 
 const Module = Quill.import('core/module');
 const Container = Quill.import('blots/container') as typeof ContainerBlot;
