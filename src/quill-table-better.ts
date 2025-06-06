@@ -33,7 +33,7 @@ import { getCellId, getCorrectCellBlot } from './utils';
 import TableToolbar from './modules/toolbar';
 import TableClipboard from './modules/clipboard';
 
-interface Options {
+export interface Options {
   language?: string | {
     name: string;
     content: Props;
