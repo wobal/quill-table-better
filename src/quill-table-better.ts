@@ -46,6 +46,7 @@ interface Options {
   toolbarTable?: boolean;
   scale?: number;
   colors?: string[];
+  nowarn?: boolean;
 }
 
 type Line = TableCellBlock | TableHeader | ListContainer;
@@ -61,6 +62,7 @@ class Table extends Module {
   options: Options;
   public scale: number;
   public colors: string[];
+  public nowarn: boolean;
   
   static keyboardBindings: { [propName: string]: BindingObject };
   
@@ -96,6 +98,7 @@ class Table extends Module {
     this.registerToolbarTable(options?.toolbarTable);
     this.scale = options.scale !== undefined ? options.scale : 1;
     this.colors = options.colors !== undefined ? options.colors : [];
+    this.nowarn = options.nowarn !== undefined ? options.nowarn : false;
   }
 
   clearHistorySelected() {
