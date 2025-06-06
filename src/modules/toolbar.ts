@@ -40,7 +40,7 @@ class TableToolbar extends Toolbar {
       this.handlers[format] == null &&
       this.quill.scroll.query(format) == null
     ) {
-      const tableBetterOptions = (this.options || this.quill.options.modules['table-better']) as Options;
+      const tableBetterOptions = this.quill.options.modules['table-better'] as Options;
       tableBetterOptions.nowarn ? null : console.warn('ignoring attaching to nonexistent format', format, input);
       return;
     }
