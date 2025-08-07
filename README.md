@@ -125,6 +125,12 @@ The `language` parameter has two types:
 | German | de_DE |
 | Russian | ru_RU |
 | Turkish | tr_TR |
+| Portuguese | pt_PT |
+| Japanese | ja_JP |
+| Brazilian Portuguese | pt_BR |
+| Czech | cs_CZ |
+| Danish | da_DK |
+| Norwegian Bokmål | nb_NO |
 
 2. Used to register a new language, such as:  
   { name: `'en_UK'`, content: [en_US](https://github.com/attoae/quill-table-better/blob/develop/src/language/en_US.ts) } (For content, please refer to [en_US](https://github.com/attoae/quill-table-better/blob/develop/src/language/en_US.ts))
@@ -155,6 +161,23 @@ The functions of the operation bar are as follows:
   - Delete table
 8. copy (Not default)
   - Copy table
+
+In addition, the `menus` supports customization:
+
+```JavaScript
+'table-better': {
+  menus: [
+    { name: 'column', icon: '<span>column</span>' },
+    { name: 'row', icon: '<svg></svg>' },
+    'merge',
+    'table',
+    'cell', 
+    'wrap',
+    'copy',
+    'delete'
+  ]
+}
+```
 
 ### toolbarTable
 `toolbarTable` is used to add a button to insert a table on the toolbar (true or false).  

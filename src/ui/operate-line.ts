@@ -5,6 +5,7 @@ import type {
   TableColgroup
 } from '../types';
 import {
+  getCorrectWidth,
   setElementProperty,
   setElementAttribute,
   updateTableWidth
@@ -12,7 +13,7 @@ import {
 
 interface Options {
   tableNode: HTMLElement;
-  cellNode: HTMLElement;
+  cellNode: Element;
   mousePosition: {
     clientX: number;
     clientY: number;
@@ -225,7 +226,8 @@ class OperateLine {
   handleMouseMove(e: MouseEvent) {
     if (!this.quill.isEnabled()) return;    
     const tableNode = (e.target as Element).closest('table');
-    const cellNode = (e.target as Element).closest('td');
+    if (tableNode && !this.quill.root.contains(tableNode)) return;
+    const cellNode = (e.target as Element).closest('td,th');
     const mousePosition = {
       clientX: e.clientX,
       clientY: e.clientY
@@ -272,22 +274,21 @@ class OperateLine {
     let change = ~~(clientX - right);
     const colSum = this.getLevelColSum(cell);
     const tableBlot = (Quill.find(cell) as TableCell).table();
+    const isPercent = tableBlot.isPercent();
     const colgroup = tableBlot.colgroup() as TableColgroup;
     let bounds = tableBlot.domNode.getBoundingClientRect();
     if (colgroup) {
       const col = this.getCorrectCol(colgroup, colSum);
       const nextCol = col.next;
-      const formats = col.formats()[col.statics.blotName];      
-      let cWidth = ~~(((parseFloat(formats['width']) + change) / (scale * 100)) * 100);
+      const { width } = col.domNode.getBoundingClientRect();
+      let cWidth = ~~(((parseFloat(width) + change) / (scale * 100)) * 100);
       let sWidth = `${cWidth}`;
-      
-      col.domNode.setAttribute('width', sWidth);
+      this.setColWidth(col.domNode, sWidth, isPercent);
       if (nextCol) {
-        const nextFormats = nextCol.formats()[nextCol.statics.blotName];
-        cWidth = ~~(((parseFloat(nextFormats['width']) - change) / (scale * 100)) * 100);
+        const { width } = nextCol.domNode.getBoundingClientRect();
+        cWidth = ~~(((parseFloat(width) - change) / (scale * 100)) * 100);
         sWidth = `${cWidth}`;
-        
-        nextCol.domNode.setAttribute('width', sWidth);
+        this.setColWidth(nextCol.domNode, sWidth, isPercent);
       }
     } else {
       const isLastCell = cell.nextElementSibling == null;
@@ -316,7 +317,8 @@ class OperateLine {
         }
       }
       for (let [node, width] of preNodes) {        
-        let cWidth = ~~((parseFloat(width) / (scale * 100)) * 100);
+        const correctWidth = getCorrectWidth(~~width, isPercent);
+        let cWidth = ~~((parseFloat(correctWidth) / (scale * 100)) * 100);
         let sWidth = `${cWidth}px`;
         
         setElementAttribute(node, { width: cWidth.toString() });
@@ -346,6 +348,7 @@ class OperateLine {
     const averageY = changeY / rows.length;    
     const preNodes: [Element, string, string][] = [];
     const tableBlot = (Quill.find(cell) as TableCell).table();
+    const isPercent = tableBlot.isPercent();
     const colgroup = tableBlot.colgroup() as TableColgroup;
     let bounds = tableBlot.domNode.getBoundingClientRect();
     for (const row of rows) {
@@ -368,17 +371,16 @@ class OperateLine {
       while (col) {
         let { width } = col.domNode.getBoundingClientRect();
         width = ~~((width / (scale * 100)) * 100);
-        
-        setElementAttribute(col.domNode, { width: `${Math.ceil(width + averageX)}` });
+        this.setColWidth(col.domNode, `${Math.ceil(width + averageX)}`, isPercent);
         col = col.next;
       }
     } else {
       for (const [node, width, height] of preNodes) {        
-        let cWidth = ~~((parseFloat(width) / (scale * 100)) * 100);
+        const correctWidth = getCorrectWidth(~~width, isPercent);
+        let cWidth = ~~((parseFloat(correctWidth) / (scale * 100)) * 100);
         let sWidth = `${cWidth}px`;
         let cHeight = ~~((parseFloat(height) / (scale * 100)) * 100);
         let sHeight = `${cHeight}px`;
-        
         setElementAttribute(node, { width: cWidth.toString(), height: cHeight.toString() });
         setElementProperty(node as HTMLElement, {
           width: sWidth,
@@ -391,6 +393,15 @@ class OperateLine {
     bounds.width = ~~((bounds.width / (scale * 100)) * 100);
     
     updateTableWidth(tableBlot.domNode, bounds, change);
+  }
+
+  setColWidth(domNode: HTMLElement, width: string, isPercent: boolean) {
+    if (isPercent) {
+      width = getCorrectWidth(parseFloat(width), isPercent);
+      domNode.style.setProperty('width', width);
+    } else {
+      setElementAttribute(domNode, { width });
+    }
   }
 
   setCellVerticalRect(cell: Element, clientY: number) {
