@@ -281,12 +281,12 @@ class OperateLine {
       const col = this.getCorrectCol(colgroup, colSum);
       const nextCol = col.next;
       const { width } = col.domNode.getBoundingClientRect();
-      let cWidth = ~~(((parseFloat(width) + change) / (scale * 100)) * 100);
+      let cWidth = ~~(((width + change) / (scale * 100)) * 100);
       let sWidth = `${cWidth}`;
       this.setColWidth(col.domNode, sWidth, isPercent);
       if (nextCol) {
         const { width } = nextCol.domNode.getBoundingClientRect();
-        cWidth = ~~(((parseFloat(width) - change) / (scale * 100)) * 100);
+        cWidth = ~~(((width - change) / (scale * 100)) * 100);
         sWidth = `${cWidth}`;
         this.setColWidth(nextCol.domNode, sWidth, isPercent);
       }
