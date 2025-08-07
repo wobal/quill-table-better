@@ -1,2 +1,9 @@
 node_modules
 dist
+.idea/modules.xml
+
+.idea/php.xml
+
+.idea/quill-table-better.iml
+
+.idea/vcs.xml
