@@ -38,7 +38,8 @@ import {
   TableTh,
   TableRow,
   TableThRow,
-  TableThead
+  TableThead,
+  TableBody
 } from '../formats/table';
 import TablePropertiesForm from './table-properties-form';
 import {
@@ -296,8 +297,10 @@ class TableMenus {
   convertToRow() {
     const tableBlot = Quill.find(this.table) as TableContainer;
     const tbody = tableBlot.tbody();
-    const ref = tbody.children.head;
+    const correctTbody = tbody || this.quill.scroll.create(TableBody.blotName) as TableBody;
+    const ref = correctTbody?.children?.head;
     const rows = this.getCorrectRows();
+    const convertRows: [TableRow, TableRow | null][] = [];
     let row = rows[0].next;
     while (row) {
       rows.unshift(row);
@@ -311,11 +314,15 @@ class TableMenus {
         const td = this.quill.scroll.create(domNode).replaceWith(TableCell.blotName, tdFormats);
         tdRow.insertBefore(td, null);
       });
-      tbody.insertBefore(tdRow, ref);
+      convertRows.unshift([tdRow, ref]);
       row.remove();
     }
+    for (const [row, ref] of convertRows) {
+      correctTbody.insertBefore(row, ref);
+    }
+    if (!tbody) tableBlot.insertBefore(correctTbody, null);
     // @ts-expect-error
-    const [td] = tbody.descendant(TableCell);
+    const [td] = correctTbody.descendant(TableCell);
     this.tableBetter.cellSelection.setSelected(td.domNode);
   }
 
@@ -461,6 +468,7 @@ class TableMenus {
 
   deleteRow(isKeyboard: boolean = false) {
     const selectedTds = this.tableBetter.cellSelection.selectedTds;
+    if (!selectedTds?.length) return;
     const rows = this.getCorrectRows();
     if (isKeyboard) {
       const sum = rows.reduce((sum: number, row: TableRow) => {
@@ -565,7 +573,7 @@ class TableMenus {
   }
 
   getCorrectBounds(table: HTMLElement): CorrectBound[] {
-    const bounds = this.quill.container.getBoundingClientRect();
+    const bounds = getCorrectBounds(this.quill.container);
     const tableBounds = getCorrectBounds(table, this.quill.container);
     return (
       tableBounds.width >= bounds.width
