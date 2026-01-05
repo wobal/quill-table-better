@@ -301,3 +301,12 @@ npm i quill-table-better
 <link href="https://cdn.jsdelivr.net/npm/quill-table-better@1/dist/quill-table-better.css" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/quill-table-better@1/dist/quill-table-better.js"></script>
 ```
+
+### Build & webpack
+- Install `watch` => `npm install watch` if not already installed
+- Create symlink for other project `yarn link`
+- On other project, use link instead of lib in node_modules `yarn link ../quill-table-better/wobal-quill-table-better`
+⚠️ If on other project you want to use github version, you must unlink `yarn unlink ../quill-table-better/wobal-quill-table-better`
+- During developement `npm run watch`
+
+To verify if your config is ok, you can add on `quill-table-better.ts` on constructor `console.log('test')` and change text to be sure each modif if automatically build on your other project
