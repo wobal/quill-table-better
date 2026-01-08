@@ -1,6 +1,6 @@
 import Quill from 'quill';
 import type { Range } from 'quill';
-import type { TableCellChildren } from './';
+import type { TableCellChildren } from '.';
 
 interface BindingObject
   extends Partial<Omit<Context, 'prefix' | 'suffix' | 'format'>> {

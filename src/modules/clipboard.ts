@@ -1,6 +1,6 @@
 import Quill from 'quill';
 import Delta from 'quill-delta';
-import logger from 'quill/core/logger.js';
+import logger from 'quill/core/logger';
 import type { Range } from 'quill';
 import type { Props } from '../types';
 import {
@@ -46,10 +46,10 @@ class TableClipboard extends Clipboard {
         }
         // Process externally pasted lists or headers or text.
         if (
-            op?.attributes?.header ||
-            op?.attributes?.list ||
-            !op?.attributes?.[TableCellBlock.blotName] ||
-            !op?.attributes?.[TableThBlock.blotName]
+          op?.attributes?.header ||
+          op?.attributes?.list ||
+          !op?.attributes?.[TableCellBlock.blotName] ||
+          !op?.attributes?.[TableThBlock.blotName]
         ) {
           op.attributes = { ...op.attributes, ...formats };
         }

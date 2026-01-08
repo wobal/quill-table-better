@@ -21,7 +21,7 @@ import {
 } from './formats/table';
 import TableHeader from './formats/header';
 import { ListContainer } from './formats/list';
-import { 
+import {
   matchTable,
   matchTableCell,
   matchTableCol,
@@ -66,7 +66,7 @@ class Table extends Module {
   public scale: number;
   public colors: string[];
   public nowarn: boolean;
-  
+
   static keyboardBindings: { [propName: string]: BindingObject };
 
   static register() {
@@ -87,9 +87,11 @@ class Table extends Module {
       'modules/clipboard': TableClipboard
     }, true);
   }
-  
+
   constructor(quill: Quill, options: Options) {
     super(quill, options);
+    quill.clipboard.addMatcher('td, th', matchTableCell);
+    quill.clipboard.addMatcher('td, th', matchTableCell);
     quill.clipboard.addMatcher('td, th', matchTableCell);
     quill.clipboard.addMatcher('tr', matchTable);
     quill.clipboard.addMatcher('col', matchTableCol);
@@ -107,6 +109,7 @@ class Table extends Module {
     this.scale = options.scale !== undefined ? options.scale : 1;
     this.colors = options.colors !== undefined ? options.colors : [];
     this.nowarn = options.nowarn !== undefined ? options.nowarn : false;
+    console.log("caca2");
   }
 
   clearHistorySelected() {
@@ -234,7 +237,7 @@ class Table extends Module {
     const range = this.quill.getSelection(true);
     if (range == null) return;
     if (this.isTable(range)) return;
-    const style = `width: 100%`;
+    const style = `width: 150px`;
     const formats = this.quill.getFormat(range.index - 1);
     const [, offset] = this.quill.getLine(range.index);
     const isExtra = !!formats[TableCellBlock.blotName] || offset !== 0;
@@ -438,7 +441,7 @@ function makeTableListHandler(key: string) {
     handler(range: Range, context: Context) {
       const [line] = this.quill.getLine(range.index);
       const cellId = getCellId(line.parent.formats()[line.parent.statics.blotName]);
-      line.replaceWith(TableCellBlock.blotName, cellId);      
+      line.replaceWith(TableCellBlock.blotName, cellId);
     }
   }
 }
