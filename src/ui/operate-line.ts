@@ -21,6 +21,7 @@ interface Options {
 }
 
 const MIN_WIDTH = 30;
+const MIN_HEIGHT = 22;
 const DRAG_BLOCK_HEIGHT = 8;
 const DRAG_BLOCK_WIDTH = 8;
 const LINE_CONTAINER_HEIGHT = 5;
@@ -397,47 +398,60 @@ class OperateLine {
   }
 
   setCellsRect(cell: Element, changeX: number, changeY: number) {
-    const scale = this.tableBetter.scale;
+    const scale = this.tableBetter.scale || 1;
     const rows = cell.parentElement.parentElement.children;
     const maxColNum = this.getMaxColNum(cell);
     const averageX = changeX / maxColNum;
     const averageY = changeY / rows.length;
-    const preNodes: [Element, string, string][] = [];
+    // on remplace Element, string, string par number pour pouvoir faire le calcul de pixel pour le "preNodes.push"
+    const preNodes: [Element, number, number][] = [];
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const isPercent = tableBlot.isPercent();
     const colgroup = tableBlot.colgroup() as TableColgroup;
     let bounds = tableBlot.domNode.getBoundingClientRect();
+
+    // Pour adapter le code aux nouveaux calculs : dimensions en pixels écrans d'abord
     for (const row of rows) {
       const cells = row.children;
       for (const cell of cells) {
         const colspan = ~~cell.getAttribute('colspan') || 1;
         const { width, height } = cell.getBoundingClientRect();
-        preNodes.push([cell, `${Math.ceil(width + averageX * colspan)}`, `${Math.ceil(height + averageY)}`]);
+        preNodes.push([cell, width + averageX * colspan, height + averageY]);
       }
     }
+
+    // Conversion en pixels logique
     if (colgroup) {
       let col = colgroup.children.head;
-      for (const [node, , height] of preNodes) {
-        let cHeight = ~~((parseFloat(height) / (scale * 100)) * 100);
-        let sHeight = `${cHeight}px`;
 
-        setElementAttribute(node, { height: cHeight.toString() });
-        setElementProperty(node as HTMLElement, { height: sHeight });
+      // Nouveau calcul pour les hauteurs
+      for (const [node, , height] of preNodes) {
+        // Division par le scale 
+        const cHeight = Math.round(height / scale);
+
+        setElementAttribute(node, { height: String(cHeight) });
+        setElementProperty(node as HTMLElement, { height: `${cHeight}px` });
       }
+      // Maj des largeurs
       while (col) {
         let { width } = col.domNode.getBoundingClientRect();
-        width = ~~((width / (scale * 100)) * 100);
-        this.setColWidth(col.domNode, `${Math.ceil(width + averageX)}`, isPercent);
+        // On ajoute la part de changement (averageX) au width écran, puis on scale
+        const newColWidth = Math.round((width + averageX) / scale);
+        this.setColWidth(col.domNode, String(newColWidth), isPercent);
         col = col.next;
       }
     } else {
+      // Tableau sans colgroup
       for (const [node, width, height] of preNodes) {
-        const correctWidth = getCorrectWidth(~~width, isPercent);
-        let cWidth = ~~((parseFloat(correctWidth) / (scale * 100)) * 100);
-        let sWidth = `${cWidth}px`;
-        let cHeight = ~~((parseFloat(height) / (scale * 100)) * 100);
-        let sHeight = `${cHeight}px`;
-        setElementAttribute(node, { width: cWidth.toString(), height: cHeight.toString() });
+        const correctWidth = getCorrectWidth(Math.round(width), isPercent);
+        // Conversion en px logique
+        const cWidth = Math.round(width / scale);
+        const cHeight = Math.round(height / scale);
+
+        const sWidth = isPercent ? getCorrectWidth(cWidth, isPercent) : `${cWidth}px`;
+        const sHeight = `${cHeight}px`;
+
+        setElementAttribute(node, { width: String(cWidth), height: String(cHeight) });
         setElementProperty(node as HTMLElement, {
           width: sWidth,
           height: sHeight
@@ -445,10 +459,15 @@ class OperateLine {
       }
     }
 
-    let change = ~~((changeX / (scale * 100)) * 100);
-    bounds.width = ~~((bounds.width / (scale * 100)) * 100);
+    // Maj de la largeur totale du tableau
+    // On convertit le changement X en logique pour l'appliquer à la largeur actuelle
+    const logicalChangeX = Math.round(changeX / scale);
 
-    updateTableWidth(tableBlot.domNode, bounds, change);
+    // On récupère la largeur logique actuelle via style ou attribut pour éviter les erreurs de scale inverse
+    const currentTableWidth = Math.round(bounds.width / scale);
+    const logicalBounds = { ...bounds, width: currentTableWidth };
+
+    updateTableWidth(tableBlot.domNode, logicalBounds, logicalChangeX);
   }
 
   setColWidth(domNode: HTMLElement, width: string, isPercent: boolean) {
@@ -461,17 +480,46 @@ class OperateLine {
   }
 
   setCellVerticalRect(cell: Element, clientY: number) {
-    const scale = this.tableBetter.scale;
+    const scale = this.tableBetter.scale || 1;
     const rowspan = ~~cell.getAttribute('rowspan') || 1;
-    const cells = rowspan > 1 ? this.getVerticalCells(cell, rowspan) : cell.parentElement.children;
 
-    for (const cell of cells) {
-      const { top } = cell.getBoundingClientRect();
-      let sHeight = ~~((~~(clientY - top) / (scale * 100)) * 100);
-      let cHeight = `${sHeight}px`;
+    // 1. Récupération des cellules cibles
+    // Si on resize une cellule fusionnée (rowspan > 1), on cible la dernière ligne de son extension.
+    // Sinon, on cible la ligne actuelle.
+    const cellsCollection = rowspan > 1 ? this.getVerticalCells(cell, rowspan) : cell.parentElement.children;
+    const cells = Array.from(cellsCollection) as HTMLElement[];
 
-      setElementAttribute(cell, { height: sHeight.toString() });
-      setElementProperty(cell as HTMLElement, { height: cHeight });
+    // 2. Récupération de la ligne parente (TR)
+    // Attention : Si rowspan > 1, 'cells' contient les cellules de la ligne du BAS. 
+    // Il faut récupérer le TR de cette ligne du bas, pas celui de la cellule de départ.
+    const row = cells[0].parentElement as HTMLElement;
+
+    // 3. Point de référence ABSOLU : Le haut de la ligne TR en cours de redimensionnement
+    const { top: rowTop } = row.getBoundingClientRect();
+
+    // 4. Calcul de la nouvelle hauteur LOGIQUE
+    let newHeight = Math.round((clientY - rowTop) / scale);
+
+    // Sécurité anti-écrasement
+    if (newHeight < MIN_HEIGHT) newHeight = MIN_HEIGHT;
+
+
+    // A. On force la ligne (TR) à la nouvelle hauteur.
+    setElementAttribute(row, { height: String(newHeight) });
+    row.style.setProperty('height', `${newHeight}px`, 'important');
+
+    // B. On applique la hauteur aux cellules, mais on filtre.
+    for (const c of cells) {
+      const cRowspan = ~~c.getAttribute('rowspan') || 1;
+
+
+      // On ne modifie que les cellules qui sont "contenues" dans cette ligne.
+      if (rowspan === 1 && cRowspan > 1) {
+        continue;
+      }
+
+      setElementAttribute(c, { height: String(newHeight) });
+      c.style.setProperty('height', `${newHeight}px`, 'important');
     }
   }
 
@@ -545,53 +593,66 @@ class OperateLine {
   }
 
   updateDragBlock(clientX: number, clientY: number) {
-    const scale = this.tableBetter.scale;
-    let sClientX = ~~((clientX / (scale * 100)) * 100);
-    let sClientY = ~~((clientY / (scale * 100)) * 100);
+    const scale = this.tableBetter.scale || 1;
 
-    let containerRect = this.quill.container.getBoundingClientRect();
-    let sContainerRect = {
-      top: ~~((containerRect.top / (scale * 100)) * 100),
-      left: ~~((containerRect.left / (scale * 100)) * 100)
+    // Conversion Souris écran --> Souris Logique
+    const sClientX = Math.round(clientX / scale);
+    const sClientY = Math.round(clientY / scale);
+
+    const containerRect = this.quill.container.getBoundingClientRect();
+    const sContainerRect = {
+      top: Math.round(containerRect.top / scale),
+      left: Math.round(containerRect.left / scale)
     };
 
     this.dragBlock.classList.add('ql-operate-block-move');
     setElementProperty(this.dragBlock, {
-      top: `${~~(sClientY - sContainerRect.top - DRAG_BLOCK_HEIGHT / 2)}px`,
-      left: `${~~(sClientX - sContainerRect.left - DRAG_BLOCK_WIDTH / 2)}px`
+      top: `${sClientY - sContainerRect.top - DRAG_BLOCK_HEIGHT / 2}px`,
+      left: `${sClientX - sContainerRect.left - DRAG_BLOCK_WIDTH / 2}px`
     });
     this.updateDragTable(clientX, clientY);
   }
 
   updateDragLine(clientX: number, clientY: number) {
-    const scale = this.tableBetter.scale;
-    let sClientX = ~~((clientX / (scale * 100)) * 100);
-    let sClientY = ~~((clientY / (scale * 100)) * 100);
+    const scale = this.tableBetter.scale || 1;
 
-    let containerRect = this.quill.container.getBoundingClientRect();
-    let sContainerRect = {
-      top: ~~((containerRect.top / (scale * 100)) * 100),
-      left: ~~((containerRect.left / (scale * 100)) * 100)
+    // Conversion (toujours la même chose normalement ça devrait aller pour comprendre)
+    const sClientX = Math.round(clientX / scale);
+    const sClientY = Math.round(clientY / scale);
+
+    const containerRect = this.quill.container.getBoundingClientRect();
+    const sContainerRect = {
+      top: Math.round(containerRect.top / scale),
+      left: Math.round(containerRect.left / scale)
     };
 
     if (this.direction === 'level') {
-      setElementProperty(this.line, { left: `${~~(sClientX - sContainerRect.left - LINE_CONTAINER_WIDTH / 2)}px` });
+      setElementProperty(this.line, {
+        left: `${sClientX - sContainerRect.left - LINE_CONTAINER_WIDTH / 2}px`
+      });
     } else if (this.direction === 'vertical') {
-      setElementProperty(this.line, { top: `${~~(sClientY - sContainerRect.top - LINE_CONTAINER_HEIGHT / 2)}px` });
+      setElementProperty(this.line, {
+        top: `${sClientY - sContainerRect.top - LINE_CONTAINER_HEIGHT / 2}px`
+      });
     }
   }
 
   updateDragTable(clientX: number, clientY: number) {
-    const scale = this.tableBetter.scale;
-    let sClientX = ~~((clientX / (scale * 100)) * 100);
-    let sClientY = ~~((clientY / (scale * 100)) * 100);
+    const scale = this.tableBetter.scale || 1;
+
+    // Conversion encore
+    const sClientX = Math.round(clientX / scale);
+    const sClientY = Math.round(clientY / scale);
 
     let { top, left } = this.dragTable.getBoundingClientRect();
-    top = ~~((top / (scale * 100)) * 100);
-    left = ~~((left / (scale * 100)) * 100);
+
+    // Conversion logique
+    top = Math.round(top / scale);
+    left = Math.round(left / scale);
 
     const width = sClientX - left;
     const height = sClientY - top;
+
     setElementProperty(this.dragTable, {
       width: `${width}px`,
       height: `${height}px`,

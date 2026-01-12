@@ -237,7 +237,18 @@ class Table extends Module {
     const range = this.quill.getSelection(true);
     if (range == null) return;
     if (this.isTable(range)) return;
-    const style = `width: 150px`;
+
+    //on mesure l'editeur (on remplace le width 100% par la taille de la fenetre wysiwyg)
+    const root = this.quill.root;
+    const computedStyle = getComputedStyle(root);
+
+    // On récupère la largeur interne (Largeur totale - Paddings)
+    const width = root.clientWidth
+      - parseFloat(computedStyle.paddingLeft || '0')
+      - parseFloat(computedStyle.paddingRight || '0');
+
+    // On applique cette largeur en pixels fixes
+    const style = `width: ${width}px`;
     const formats = this.quill.getFormat(range.index - 1);
     const [, offset] = this.quill.getLine(range.index);
     const isExtra = !!formats[TableCellBlock.blotName] || offset !== 0;
@@ -253,7 +264,10 @@ class Table extends Module {
       return new Array(columns).fill('\n').reduce((memo, text) => {
         return memo.insert(text, {
           [TableCellBlock.blotName]: cellId(),
-          [TableCell.blotName]: { 'data-row': id }
+          [TableCell.blotName]: {
+            'data-row': id,
+            height: '22px'
+          }
         });
       }, memo);
     }, base);

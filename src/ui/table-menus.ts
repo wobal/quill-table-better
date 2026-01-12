@@ -577,8 +577,8 @@ class TableMenus {
     const tableBounds = getCorrectBounds(table, this.quill.container);
     return (
       tableBounds.width >= bounds.width
-       ? [{ ...tableBounds, left: 0, right: bounds.width }, bounds]
-       : [tableBounds, bounds]
+        ? [{ ...tableBounds, left: 0, right: bounds.width }, bounds]
+        : [tableBounds, bounds]
     );
   }
 
@@ -759,9 +759,9 @@ class TableMenus {
 
   getTdsFromMap(map: TableCellMap) {
     return Object.values(Object.fromEntries(map))
-    .reduce((tds: HTMLTableCellElement[], item: HTMLTableCellElement[]) => {
-      return tds.length > item.length ? tds : item;
-    }, []);
+      .reduce((tds: HTMLTableCellElement[], item: HTMLTableCellElement[]) => {
+        return tds.length > item.length ? tds : item;
+      }, []);
   }
 
   handleClick(e: MouseEvent) {
