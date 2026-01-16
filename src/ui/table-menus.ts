@@ -833,60 +833,120 @@ class TableMenus {
 
   mergeCells() {
     const { selectedTds } = this.tableBetter.cellSelection;
-    const { computeBounds, leftTd } = this.getSelectedTdsInfo();
+    const { leftTd } = this.getSelectedTdsInfo();
     const leftTdBlot = Quill.find(leftTd) as TableCell;
-    const [formats, cellId] = getCellFormats(leftTdBlot);
-    const head = leftTdBlot.children.head;
     const tableBlot = leftTdBlot.table();
-    const rows = tableBlot.tbody().children as LinkedList<TableRow>;
-    const row = leftTdBlot.row();
-    const colspan = row.children.reduce((colspan: number, td: TableCell) => {
-      const tdCorrectBounds = getCorrectBounds(td.domNode, this.quill.container);
-      if (
-        tdCorrectBounds.left >= computeBounds.left &&
-        tdCorrectBounds.right <= computeBounds.right
-      ) {
-        colspan += ~~td.domNode.getAttribute('colspan') || 1;
+    const scale = this.tableBetter.scale || 1;
+
+    const [formats, cellId] = getCellFormats(leftTdBlot);
+    if (formats['height']) delete formats['height'];
+    if (formats['style']) formats['style'] = formats['style'].replace(/height\s*:\s*[^;]+;?/gi, '');
+
+    // Identification des lignes (Scan DOM)
+    const rowsToCheck = this.getCorrectRows();
+    const initialRowCount = rowsToCheck.length;
+
+    let totalVisualHeight = 0;
+    rowsToCheck.forEach(row => {
+      const rect = row.domNode.getBoundingClientRect();
+      if (rect.height > 0) totalVisualHeight += rect.height;
+    });
+    const totalLogicalHeight = Math.round(totalVisualHeight / scale);
+
+    const topRow = rowsToCheck[0];
+    const colspan = topRow.children.reduce((sum: number, td: TableCell) => {
+      if (selectedTds.some(s => s === td.domNode)) {
+        sum += ~~td.domNode.getAttribute('colspan') || 1;
       }
-      return colspan;
+      return sum;
     }, 0);
-    const rowspan = rows.reduce((rowspan: number, row: TableRow) => {
-      const rowCorrectBounds = getCorrectBounds(row.domNode, this.quill.container);
-      if (
-        rowCorrectBounds.top >= computeBounds.top &&
-        rowCorrectBounds.bottom <= computeBounds.bottom
-      ) {
-        let minRowspan = Number.MAX_VALUE;
-        row.children.forEach((td: TableCell) => {
-          const rowspan = ~~td.domNode.getAttribute('rowspan') || 1;
-          minRowspan = Math.min(minRowspan, rowspan);
-        });
-        rowspan += minRowspan;
-      }
-      return rowspan;
-    }, 0);
-    let offset = 0;
+
+    const cellsToRemove: TableCell[] = [];
     for (const td of selectedTds) {
       if (leftTd.isEqualNode(td)) continue;
       const blot = Quill.find(td) as TableCell;
-      blot.moveChildren(leftTdBlot);
-      blot.remove();
-      if (!blot.parent?.children?.length) offset++;
+
+      let child = blot.children.head;
+      while (child) {
+        const nextChild = child.next;
+        const targetBlock = leftTdBlot.children.tail;
+        if (targetBlock) {
+          child.moveChildren(targetBlock);
+          child.remove();
+        } else {
+          leftTdBlot.appendChild(child);
+        }
+        child = nextChild;
+      }
+      cellsToRemove.push(blot);
     }
-    if (offset) {
-      // Subtract the number of rows deleted by the merge
-      row.children.forEach((child: TableCell) => {
-        if (child.domNode.isEqualNode(leftTd)) return;
-        const rowspan = child.domNode.getAttribute('rowspan');
-        const [formats] = getCellFormats(child);
-        // @ts-expect-error
-        child.replaceWith(child.statics.blotName, { ...formats, rowspan: rowspan - offset });
+    cellsToRemove.forEach(cell => cell.remove());
+
+    const rowsToDelete: TableRow[] = [];
+    rowsToCheck.forEach(row => {
+      if ((row.domNode as HTMLElement).childElementCount === 0) {
+        rowsToDelete.push(row);
+      }
+    });
+
+    if (rowsToDelete.length > 0) {
+      const allCells = tableBlot.descendants(TableCell);
+      const deletedRowIndices = rowsToDelete.map(r =>
+        (r.domNode as HTMLTableRowElement).rowIndex
+      ).sort((a, b) => a - b);
+
+      allCells.forEach((cell) => {
+        if (cell.domNode === leftTd) return;
+        const rowspan = ~~cell.domNode.getAttribute('rowspan') || 1;
+        if (rowspan <= 1) return;
+
+        const cellTr = cell.domNode.parentElement as HTMLTableRowElement;
+        const startIndex = cellTr.rowIndex;
+        const endIndex = startIndex + rowspan - 1;
+
+        let overlappingDeletions = 0;
+        for (const delIndex of deletedRowIndices) {
+          if (delIndex > startIndex && delIndex <= endIndex) {
+            overlappingDeletions++;
+          }
+        }
+
+        if (overlappingDeletions > 0) {
+          const [cFormats] = getCellFormats(cell);
+          if (cFormats['height']) delete cFormats['height'];
+          const newRowspan = Math.max(1, rowspan - overlappingDeletions);
+          cell.replaceWith(cell.statics.blotName, { ...cFormats, rowspan: newRowspan });
+        }
       });
     }
+
+    rowsToDelete.forEach(row => row.remove());
+
     leftTdBlot.setChildrenId(cellId);
-    // @ts-expect-error
-    head.format(leftTdBlot.statics.blotName, { ...formats, colspan, rowspan: rowspan - offset });
-    this.tableBetter.cellSelection.setSelected(head.parent.domNode);
+    const finalRowspan = Math.max(1, initialRowCount - rowsToDelete.length);
+
+    // On prépare les formats
+    formats['height'] = `${totalLogicalHeight}px`;
+    let cssStyle = formats['style'] || '';
+    cssStyle = cssStyle.replace(/height\s*:\s*[^;]+;?/gi, '');
+    if (cssStyle && !cssStyle.trim().endsWith(';')) cssStyle += ';';
+    cssStyle += `height: ${totalLogicalHeight}px !important;`;
+    formats['style'] = cssStyle;
+
+    // Au lieu de formater l'enfant (head.format), on REMPLACE la cellule conteneur (replaceWith).
+    // Cela garantit une structure DOM propre immédiatement.
+    const newCellBlot = leftTdBlot.replaceWith(leftTdBlot.statics.blotName, {
+      ...formats,
+      colspan,
+      rowspan: finalRowspan
+    });
+
+    // Force brute Style (par sécurité) sur le nouveau blot
+    const newCellNode = newCellBlot.domNode as HTMLElement;
+    newCellNode.style.height = `${totalLogicalHeight}px`;
+    newCellNode.style.setProperty('height', `${totalLogicalHeight}px`, 'important');
+
+    this.tableBetter.cellSelection.setSelected(newCellNode);
     this.quill.scrollSelectionIntoView();
   }
 

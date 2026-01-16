@@ -64,6 +64,9 @@ interface ColorList {
   describe: string;
 }
 
+const MIN_WIDTH = 30;
+const MIN_HEIGHT = 22;
+
 const ACTION_LIST = [
   { icon: saveIcon, label: 'save', type: 'button' },
   { icon: closeIcon, label: 'cancel', type: 'button' }
@@ -570,29 +573,86 @@ class TablePropertiesForm {
     const tableBlot = Quill.find(table) as TableContainer;
     const colgroup = tableBlot.colgroup();
     const isPercent = tableBlot.isPercent();
+
+    // 1. Récupération des changements (couleurs, align...)
     const attrs = this.getDiffProperties();
+
+    // Largeur
+    let currentWidth = this.attrs['width'];
+    if (currentWidth) {
+      // Nettoyage et conversion
+      const rawW = parseFloat(currentWidth);
+      if (!isNaN(rawW)) {
+        // Ajout unité si manquante
+        if (!currentWidth.endsWith('%') && !currentWidth.endsWith('px')) {
+          currentWidth += 'px';
+        }
+
+        // Calcul pixels pour la limite
+        const isPct = currentWidth.endsWith('%');
+        const pxW = isPct ? (rawW * getCorrectContainerWidth() / 100) : rawW;
+
+        // APPLICATION DE LA LIMITE
+        if (pxW < MIN_WIDTH) {
+          currentWidth = `${MIN_WIDTH}px`;
+        }
+
+        // On force la valeur validée dans attrs
+        attrs['width'] = currentWidth;
+      }
+    }
+
+    // Hauteur
+    let currentHeight = this.attrs['height'];
+    if (currentHeight) {
+      const rawH = parseFloat(currentHeight);
+      if (!isNaN(rawH)) {
+        if (!currentHeight.endsWith('%') && !currentHeight.endsWith('px')) {
+          currentHeight += 'px';
+        }
+        // Limite Hauteur
+        if (rawH < MIN_HEIGHT) {
+          currentHeight = `${MIN_HEIGHT}px`;
+        }
+        attrs['height'] = currentHeight;
+      }
+    }
+
     const floatW = parseFloat(attrs['width']);
     const width =
       attrs['width']?.endsWith('%')
         ? floatW * getCorrectContainerWidth() / 100
         : floatW;
+
     const align = attrs['text-align'];
     align && delete attrs['text-align'];
     const newSelectedTds = [];
+
     if (colgroup && width) {
-      delete attrs['width'];
       const { operateLine } = this.tableMenus.tableBetter;
       const { computeBounds } = this.tableMenus.getSelectedTdsInfo();
       const cols = getComputeSelectedCols(computeBounds, table, quill.container);
       for (const col of cols) {
         operateLine.setColWidth(col as HTMLElement, `${width}`, isPercent);
+
+        // Sécurité Style
+        if (!isPercent) {
+          (col as HTMLElement).style.width = `${width}px`;
+          (col as HTMLElement).style.minWidth = `${width}px`;
+        }
       }
     }
+
     for (const td of selectedTds) {
       const tdBlot = Quill.find(td) as TableCell;
       const blotName = tdBlot.statics.blotName;
       const formats = tdBlot.formats()[blotName];
+
+      if (attrs['width']) formats['width'] = attrs['width'];
+      if (attrs['height']) formats['height'] = attrs['height'];
+
       const style = this.getCellStyle(td, attrs);
+
       if (align) {
         const _align = align === 'left' ? '' : align;
         tdBlot.children.forEach((child: TableCellBlock | ListContainer | TableHeader) => {
@@ -605,35 +665,197 @@ class TablePropertiesForm {
           }
         });
       }
+
       const parent = tdBlot.replaceWith(blotName, { ...formats, style }) as TableCell;
+
+      // INJECTION DOM FORCE
+      const el = parent.domNode as HTMLElement;
+      if (attrs['width']) {
+        el.style.width = attrs['width'];
+        if (!attrs['width'].endsWith('%')) el.style.minWidth = attrs['width'];
+        el.setAttribute('width', attrs['width'].replace('px', ''));
+      }
+      if (attrs['height']) {
+        el.style.height = attrs['height'];
+        el.style.minHeight = attrs['height'];
+        el.setAttribute('height', attrs['height'].replace('px', ''));
+      }
+
       newSelectedTds.push(parent.domNode);
     }
+
     this.tableMenus.tableBetter.cellSelection.setSelectedTds(newSelectedTds);
-    if (!isPercent) this.updateTableWidth(table, tableBlot, isPercent);
+
+    // On a SUPPRIMÉ l'appel à updateTableWidth ici.
+    // Cela empêche le tableau de se redimensionner automatiquement (et de rétrécir)
+    // lorsqu'on valide le formulaire. Le tableau garde sa largeur actuelle.
   }
 
   saveTableAction() {
     const { table, tableBetter } = this.tableMenus;
-    const temporary = (Quill.find(table) as TableContainer).temporary()?.domNode;
+    const tableBlot = Quill.find(table) as TableContainer;
     const td = table.querySelector('td,th');
     const attrs = this.getDiffProperties();
+
+    const MIN_COL_WIDTH = 30;
+    const MIN_ROW_HEIGHT = 22;
+
+    // A. On compte précisément le nombre de colonnes
+    let colsCount = 0;
+    const colgroup = tableBlot.colgroup();
+
+    if (colgroup) {
+      // Méthode 1 : Via les balises <col>
+      let col = colgroup.children.head;
+      while (col) {
+        colsCount++;
+        col = col.next;
+      }
+    }
+
+    // Fallback : Si pas de colgroup, on compte les cellules de la 1ère ligne
+    if (colsCount === 0) {
+      const firstRow = table.querySelector('tr');
+      if (firstRow) {
+        colsCount = firstRow.children.length;
+      }
+    }
+
+    if (colsCount === 0) colsCount = 1;
+
+    // B. Le Minimum du Tableau = Nb Colonnes * 30px
+    const REQUIRED_TABLE_WIDTH = colsCount * MIN_COL_WIDTH;
+
+    let targetWidthStr = this.attrs['width'];
+
+    // Si l'utilisateur n'a rien mis, on prend la largeur actuelle
+    if (!targetWidthStr) {
+      targetWidthStr = table.style.width || table.getAttribute('width') || '100%';
+    }
+
+    let finalWidthPx = 0;
+    let isPercent = false;
+    let forceResetMode = false;
+
+    const rawW = parseFloat(targetWidthStr);
+    if (!isNaN(rawW)) {
+      if (!targetWidthStr.endsWith('%') && !targetWidthStr.endsWith('px')) targetWidthStr += 'px';
+      isPercent = targetWidthStr.endsWith('%');
+
+      // Conversion en pixels pour comparer
+      const containerWidth = getCorrectContainerWidth();
+      finalWidthPx = isPercent ? (rawW * containerWidth / 100) : rawW;
+
+      // Si l'utilisateur demande moins que le minimum vital (ex: 1px pour 3 cols)
+      if (finalWidthPx < REQUIRED_TABLE_WIDTH) {
+        // ON FORCE LE MINIMUM CALCULÉ
+        finalWidthPx = REQUIRED_TABLE_WIDTH;
+        targetWidthStr = `${REQUIRED_TABLE_WIDTH}px`;
+        isPercent = false; // On passe en pixel fixe pour stabiliser
+        forceResetMode = true; // On active le mode "Reset des colonnes"
+      }
+
+      attrs['width'] = targetWidthStr;
+    }
+
+    // Gestion Hauteur (Minimum 22px)
+    let currentHeight = this.attrs['height'];
+    if (currentHeight) {
+      const rawH = parseFloat(currentHeight);
+      if (!isNaN(rawH)) {
+        if (!currentHeight.endsWith('%') && !currentHeight.endsWith('px')) currentHeight += 'px';
+        if (rawH < MIN_ROW_HEIGHT) currentHeight = `${MIN_ROW_HEIGHT}px`;
+        attrs['height'] = currentHeight;
+      }
+    }
+
     const align = attrs['align'];
     delete attrs['align'];
     switch (align) {
-      case 'center':
-        Object.assign(attrs, { 'margin': '0 auto' });
-        break;
-      case 'left':
-        Object.assign(attrs, { 'margin': '' });
-        break;
-      case 'right':
-        Object.assign(attrs, { 'margin-left': 'auto', 'margin-right': '' });
-        break;
-      default:
-        break;
+      case 'center': Object.assign(attrs, { 'margin': '0 auto' }); break;
+      case 'left': Object.assign(attrs, { 'margin': '' }); break;
+      case 'right': Object.assign(attrs, { 'margin-left': 'auto', 'margin-right': '' }); break;
     }
-    setElementProperty(temporary || table, attrs);
-    tableBetter.cellSelection.setSelected(td);
+
+    const applyUpdates = () => {
+      if (colgroup && finalWidthPx > 0) {
+        const { operateLine } = this.tableMenus.tableBetter;
+        const cols: HTMLElement[] = [];
+        let col = colgroup.children.head;
+        while (col) {
+          cols.push(col.domNode as HTMLElement);
+          col = col.next;
+        }
+
+        if (cols.length > 0) {
+          if (forceResetMode) {
+            // CAS 1 : L'utilisateur a mis trop petit.
+            // On impose 30px à TOUT LE MONDE. Pas de jaloux.
+            const safeColWidth = `${MIN_COL_WIDTH}px`;
+
+            cols.forEach(c => {
+              // 1. Update Quill data
+              operateLine.setColWidth(c, safeColWidth, false);
+              // 2. Force CSS immédiate
+              c.style.setProperty('width', safeColWidth, 'important');
+              c.style.setProperty('min-width', safeColWidth, 'important');
+            });
+          } else {
+            // CAS 2 : Taille valide. On distribue proportionnellement.
+            let currentTotal = 0;
+            cols.forEach(c => currentTotal += parseFloat(c.style.width || c.getAttribute('width') || '0'));
+            // Protection division par zéro
+            if (currentTotal <= 1) currentTotal = finalWidthPx;
+
+            const ratio = finalWidthPx / currentTotal;
+
+            cols.forEach(c => {
+              let oldW = parseFloat(c.style.width || c.getAttribute('width') || '0');
+              if (oldW < 1) oldW = finalWidthPx / colsCount; // Fallback
+
+              let newW = oldW * ratio;
+              // Sécurité : une colonne ne descend jamais sous 30px
+              if (newW < MIN_COL_WIDTH) newW = MIN_COL_WIDTH;
+
+              operateLine.setColWidth(c, `${newW}px`, false);
+            });
+          }
+        }
+      }
+
+      // B. On force le tableau entier
+      const currentTemp = tableBlot.temporary()?.domNode;
+      const targets = [table];
+      if (currentTemp) targets.push(currentTemp);
+
+      targets.forEach(target => {
+        setElementProperty(target, attrs);
+
+        if (attrs['width']) {
+          const w = attrs['width'];
+          target.style.setProperty('width', w, 'important');
+          if (!w.endsWith('%')) {
+            target.style.setProperty('min-width', w, 'important');
+            target.setAttribute('width', w.replace('px', ''));
+          } else {
+            target.setAttribute('width', w);
+          }
+        }
+        if (attrs['height']) {
+          const h = attrs['height'];
+          target.style.setProperty('height', h, 'important');
+          target.style.setProperty('min-height', h, 'important');
+          if (!h.endsWith('%')) target.setAttribute('height', h.replace('px', ''));
+        }
+      });
+    };
+
+    // DOUBLE EXÉCUTION (Pour forcer le navigateur à obéir)
+    applyUpdates();
+    setTimeout(() => {
+      applyUpdates();
+      if (td) tableBetter.cellSelection.setSelected(td);
+    }, 0);
   }
 
   setAttribute(propertyName: string, value: string, container?: HTMLElement) {
@@ -709,7 +931,7 @@ class TablePropertiesForm {
       isColor
         ? this.getColorClosest(container)
         : getClosestElement(container, '.label-field-view');
-      const wrapper = closestContainer.querySelector('.label-field-view-input-wrapper');
+    const wrapper = closestContainer.querySelector('.label-field-view-input-wrapper');
     if (status) {
       wrapper.classList.add('label-field-view-error');
       this.setSaveButtonDisabled(true);
