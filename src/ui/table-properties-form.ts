@@ -696,7 +696,6 @@ class TablePropertiesForm {
     const tableBlot = Quill.find(table) as TableContainer;
     const td = table.querySelector('td,th');
     const attrs = this.getDiffProperties();
-
     const MIN_COL_WIDTH = 30;
     const MIN_ROW_HEIGHT = 22;
 
