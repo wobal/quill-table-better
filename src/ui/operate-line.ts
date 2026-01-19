@@ -95,6 +95,7 @@ class OperateLine {
     const rect = table.getBoundingClientRect();
     const containerRect = this.quill.container.getBoundingClientRect();
 
+    //Conversion simple à la place des scale * 100
     const width = Math.round(rect.width / scale);
     const height = Math.round(rect.height / scale);
     const left = Math.round((rect.left - containerRect.left) / scale);
@@ -150,7 +151,7 @@ class OperateLine {
       height: toLogical(containerRect.height)
     };
 
-    //Coordonnées Logiques de la cellule    
+    //Coordonnées Logiques de la cellule
     const sCellRect = {
       left: toLogical(cellRect.left),
       top: toLogical(cellRect.top),
@@ -158,15 +159,15 @@ class OperateLine {
       height: toLogical(cellRect.height)
     };
 
-    // Le dragBlock (Coin bas-droit de la cellule)    
+    // Le dragBlock (Coin bas-droit de la cellule)
     const x = sCellRect.left + sCellRect.width;
     const y = sCellRect.top + sCellRect.height;
 
-    // Position de la souris logique    
+    // Position de la souris logique
     const clientX = toLogical(mousePosition.clientX);
     const clientY = toLogical(mousePosition.clientY);
 
-    // Limites de la table (Logique)    
+    // Limites de la table (Logique)
     const sTableRect = {
       right: toLogical(tableRect.right),
       bottom: toLogical(tableRect.bottom)
@@ -177,7 +178,7 @@ class OperateLine {
       height: `${DRAG_BLOCK_HEIGHT}px`,
       top: `${sTableRect.bottom - sContainerRect.top}px`,
       left: `${sTableRect.right - sContainerRect.left}px`,
-      display: 'block'
+      display: 'block' // avant il disparaissait si overflow la ça sera plus simple ;)
     }
 
     if (Math.abs(x - clientX) <= TOUCH_TOLERANCE) {
@@ -186,7 +187,7 @@ class OperateLine {
         dragBlockProps,
         containerProps: {
           width: `${LINE_CONTAINER_WIDTH}px`,
-          height: `${sCellRect.height}px`,  // j'ai modfifier pour que ce soit la hauteur de la cellule et pas du conteneur
+          height: `${sCellRect.height}px`, // j'ai modfifier pour que ce soit la hauteur de la cellule et pas du conteneur
           top: `${sCellRect.top - sContainerRect.top}px`,
           left: `${x - sContainerRect.left - LINE_CONTAINER_WIDTH / 2}px`,
           display: 'flex',
@@ -202,7 +203,7 @@ class OperateLine {
       return {
         dragBlockProps,
         containerProps: {
-          width: `${sCellRect.width}px`,  // Pareil Largeur de la cellule et pas du conteneur
+          width: `${sCellRect.width}px`, // Pareil Largeur de la cellule et pas du conteneur
           height: `${LINE_CONTAINER_HEIGHT}px`,
           top: `${y - sContainerRect.top - LINE_CONTAINER_HEIGHT / 2}px`,
           left: `${sCellRect.left - sContainerRect.left}px`,
@@ -253,11 +254,13 @@ class OperateLine {
     }
 
     if (!tableNode || !cellNode) {
-      // Si on est proche du coin du tableau, on le laisse affiché      
+
+      // Si on est proche du coin du tableau, on le laisse affiché
       if (this.options && this.options.tableNode) {
         const rect = this.options.tableNode.getBoundingClientRect();
+
         // Distance entre la souris et le coin bas-droit du tableau
-        // 40 px de limite comme ça on est large et on galère pas à le choper   
+        // On compare avec un rayon généreux (ex: 40px) pour faciliter la prise
         const dist = Math.sqrt(
           Math.pow(e.clientX - rect.right, 2) +
           Math.pow(e.clientY - rect.bottom, 2)
@@ -268,6 +271,7 @@ class OperateLine {
         }
       }
 
+      // Si on est dans la tolérance d'une bordure, on met à jour au lieu de cacher
       if (this.line && !this.drag && this.options) {
         const extendedOptions = {
           tableNode: this.options.tableNode,
@@ -283,6 +287,7 @@ class OperateLine {
         }
       }
 
+      // C. Si on est vraiment loin de tout : On cache.
       if (this.line && !this.drag) {
         this.hideLine();
         this.hideDragBlock();
@@ -290,6 +295,7 @@ class OperateLine {
       return;
     }
 
+    // 3. CAS STANDARD (Souris sur une cellule)
     const options = { tableNode, cellNode, mousePosition };
     if (!this.line) {
       this.options = options;
@@ -331,9 +337,10 @@ class OperateLine {
       const sWidth = isPercent ? getCorrectWidth(w, isPercent) : `${w}px`;
 
       setElementProperty(node as HTMLElement, { width: sWidth });
+
+      // FIX 2 : On s'assure que min-width est nettoyé sur la colonne
       if (!isPercent) {
         (node as HTMLElement).style.setProperty('width', sWidth, 'important');
-        // NETTOYAGE: On s'assure qu'aucun min-width ne bloque cette colonne
         (node as HTMLElement).style.removeProperty('min-width');
       }
     };
@@ -343,28 +350,37 @@ class OperateLine {
       const nextCol = col.next;
       const { left: colLeft } = col.domNode.getBoundingClientRect();
 
+      // Comportement : On change la taille de la colonne ET du tableau.
       if (!nextCol) {
+        // 1. Calcul largeur basée sur la souris (Absolu)
         let newW = Math.round((clientX - colLeft) / scale);
-        // SÉCURITÉ: 30px Minimum
         if (newW < MIN_WIDTH) newW = MIN_WIDTH;
 
+        // 2. Récupérer l'ancienne largeur pour calculer le delta de la table
         let currentAttrW = parseInt(col.domNode.getAttribute('width'));
         let oldW = !isNaN(currentAttrW) ? currentAttrW : Math.round(col.domNode.getBoundingClientRect().width / scale);
         let diff = newW - oldW;
 
         if (diff !== 0) {
           applyWidth(col.domNode, newW);
+          // Mise à jour explicite de la largeur de la table
           bounds.width = bounds.width / scale;
           updateTableWidth(tableBlot.domNode, bounds, diff);
         }
         return;
       }
 
+      // Si on a un voisin, on est à l'intérieur.
+      // Comportement : La somme A + B reste fixe. Le tableau ne bouge pas.
       const rectB = nextCol.domNode.getBoundingClientRect();
+      // On calcule la largeur totale A+B VISUELLE actuelle
       const w1Visual = col.domNode.getBoundingClientRect().width;
       const w2Visual = rectB.width;
+
+      // On convertit en logique
       const totalLogical = Math.round((w1Visual + w2Visual) / scale);
 
+      // Calcul de la nouvelle largeur A
       let newW1 = Math.round((clientX - colLeft) / scale);
 
       if (newW1 < MIN_WIDTH) newW1 = MIN_WIDTH;
@@ -429,32 +445,28 @@ class OperateLine {
     }
   }
 
+  setCellRect(cell: Element, clientX: number, clientY: number) {
+    if (this.direction === 'level') {
+      this.setCellLevelRect(cell, clientX);
+    } else if (this.direction === 'vertical') {
+      this.setCellVerticalRect(cell, clientY);
+    }
+  }
+
   setCellsRect(cell: Element, changeX: number, changeY: number) {
     const scale = this.tableBetter.scale || 1;
     const rows = cell.parentElement.parentElement.children;
     const maxColNum = this.getMaxColNum(cell);
-
-    // Si la table devient trop petite, on bloque le changeX
-    const tableNode = (Quill.find(cell) as TableCell).table().domNode;
-    const { width: visualTableWidth } = tableNode.getBoundingClientRect();
-    const logicalTableWidth = visualTableWidth / scale;
-    const minTableWidth = maxColNum * MIN_WIDTH;
-    const logicalChangeX = Math.round(changeX / scale);
-
-    if (logicalTableWidth + logicalChangeX < minTableWidth) {
-      // On limite la réduction
-      changeX = (minTableWidth - logicalTableWidth) * scale;
-    }
-
     const averageX = changeX / maxColNum;
     const averageY = changeY / rows.length;
-    // @ts-ignore
+    // on remplace Element, string, string par number pour pouvoir faire le calcul de pixel pour le "preNodes.push"
     const preNodes: [Element, number, number][] = [];
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const isPercent = tableBlot.isPercent();
     const colgroup = tableBlot.colgroup() as TableColgroup;
     let bounds = tableBlot.domNode.getBoundingClientRect();
 
+    // Pour adapter le code aux nouveaux calculs : dimensions en pixels écrans d'abord
     for (const row of rows) {
       const cells = row.children;
       for (const cell of cells) {
@@ -464,18 +476,23 @@ class OperateLine {
       }
     }
 
+    // Conversion en pixels logique
     if (colgroup) {
       let col = colgroup.children.head;
 
+      // Nouveau calcul pour les hauteurs
       for (const [node, , height] of preNodes) {
+        // Division par le scale 
         let cHeight = Math.round(height / scale);
         if (cHeight < MIN_HEIGHT) cHeight = MIN_HEIGHT;
 
         setElementAttribute(node, { height: String(cHeight) });
         setElementProperty(node as HTMLElement, { height: `${cHeight}px` });
       }
+      // Maj des largeurs
       while (col) {
         let { width } = col.domNode.getBoundingClientRect();
+        // On ajoute la part de changement (averageX) au width écran, puis on scale
         let newColWidth = Math.round((width + averageX) / scale);
         if (newColWidth < MIN_WIDTH) newColWidth = MIN_WIDTH;
 
@@ -483,8 +500,10 @@ class OperateLine {
         col = col.next;
       }
     } else {
+      // Tableau sans colgroup
       for (const [node, width, height] of preNodes) {
         const correctWidth = getCorrectWidth(Math.round(width), isPercent);
+        // Conversion en px logique
         let cWidth = Math.round(width / scale);
         let cHeight = Math.round(height / scale);
 
@@ -495,22 +514,22 @@ class OperateLine {
         const sHeight = `${cHeight}px`;
 
         setElementAttribute(node, { width: String(cWidth), height: String(cHeight) });
-
-        const el = node as HTMLElement;
-        setElementProperty(el, { width: sWidth, height: sHeight });
-        if (!isPercent) {
-          el.style.setProperty('width', sWidth, 'important');
-          el.style.removeProperty('min-width'); // Important: on libère
-        }
+        setElementProperty(node as HTMLElement, {
+          width: sWidth,
+          height: sHeight
+        });
       }
     }
 
-    // On recalcule le changement réel (après sécurité)
-    const finalLogicalChangeX = Math.round(changeX / scale);
+    // Maj de la largeur totale du tableau
+    // On convertit le changement X en logique pour l'appliquer à la largeur actuelle
+    const logicalChangeX = Math.round(changeX / scale);
+
+    // On récupère la largeur logique actuelle via style ou attribut pour éviter les erreurs de scale inverse
     const currentTableWidth = Math.round(bounds.width / scale);
     const logicalBounds = { ...bounds, width: currentTableWidth };
 
-    updateTableWidth(tableBlot.domNode, logicalBounds, finalLogicalChangeX);
+    updateTableWidth(tableBlot.domNode, logicalBounds, logicalChangeX);
   }
 
   setColWidth(domNode: HTMLElement, width: string, isPercent: boolean) {
@@ -519,8 +538,7 @@ class OperateLine {
       domNode.style.setProperty('width', width);
     } else {
       setElementAttribute(domNode, { width });
-      // Force Width + DELETE Min-Width pour autoriser le rétrécissement
-      domNode.style.setProperty('width', `${width}px`, 'important');
+      // FIX 2 : On s'assure que min-width est nettoyé sur la colonne
       domNode.style.removeProperty('min-width');
     }
   }
@@ -528,22 +546,40 @@ class OperateLine {
   setCellVerticalRect(cell: Element, clientY: number) {
     const scale = this.tableBetter.scale || 1;
     const rowspan = ~~cell.getAttribute('rowspan') || 1;
+
+    // 1. Récupération des cellules cibles
+    // Si on resize une cellule fusionnée (rowspan > 1), on cible la dernière ligne de son extension.
+    // Sinon, on cible la ligne actuelle.
     const cellsCollection = rowspan > 1 ? this.getVerticalCells(cell, rowspan) : cell.parentElement.children;
     const cells = Array.from(cellsCollection) as HTMLElement[];
+
+    // 2. Récupération de la ligne parente (TR)
+    // Attention : Si rowspan > 1, 'cells' contient les cellules de la ligne du BAS. 
+    // Il faut récupérer le TR de cette ligne du bas, pas celui de la cellule de départ.
     const row = cells[0].parentElement as HTMLElement;
+
     const { top: rowTop } = row.getBoundingClientRect();
+
+    //  Calcul de la nouvelle hauteur LOGIQUE
     let newHeight = Math.round((clientY - rowTop) / scale);
 
     if (newHeight < MIN_HEIGHT) newHeight = MIN_HEIGHT;
 
+
+    // A. On force la ligne (TR) à la nouvelle hauteur.
     setElementAttribute(row, { height: String(newHeight) });
     row.style.setProperty('height', `${newHeight}px`, 'important');
 
+    // B. On applique la hauteur aux cellules, mais on filtre.
     for (const c of cells) {
       const cRowspan = ~~c.getAttribute('rowspan') || 1;
+
+
+      // On ne modifie que les cellules qui sont "contenues" dans cette ligne.
       if (rowspan === 1 && cRowspan > 1) {
         continue;
       }
+
       setElementAttribute(c, { height: String(newHeight) });
       c.style.setProperty('height', `${newHeight}px`, 'important');
     }
@@ -581,7 +617,7 @@ class OperateLine {
       const { cellNode, tableNode } = this.options;
 
       if (isLine) {
-        this.setCellsRect(cellNode, e.clientX, e.clientY);
+        this.setCellRect(cellNode, e.clientX, e.clientY);
         this.toggleLineChildClass(false);
       } else {
         const { right, bottom } = tableNode.getBoundingClientRect();
@@ -593,8 +629,8 @@ class OperateLine {
         this.hideDragTable();
       }
 
-      // Une fois le drag terminé, on calcule la limite théorique et on l'applique.
-      // On ne fige PAS la taille actuelle, mais la taille MINIMALE pour ne pas bloquer les futurs drags.
+      // FIX 3 : REVERROUILLAGE FINAL (SNAPSHOT)
+      // Une fois le drag fini, on repose le filet de sécurité via un setTimeout
       setTimeout(() => {
         if (tableNode) {
           const colsCount = this.getMaxColNum(cellNode);
@@ -613,7 +649,8 @@ class OperateLine {
       e.preventDefault();
       const { tableNode } = this.options;
 
-      // On retire le verrou pour permettre au tableau de bouger librement.
+      // FIX 1 : DÉVERROUILLAGE (Clean Slate)
+      // On retire le min-width au clic pour permettre le rétrécissement
       if (tableNode) {
         tableNode.style.removeProperty('min-width');
       }
@@ -637,6 +674,8 @@ class OperateLine {
 
   updateDragBlock(clientX: number, clientY: number) {
     const scale = this.tableBetter.scale || 1;
+
+    // Conversion Souris écran --> Souris Logique
     const sClientX = Math.round(clientX / scale);
     const sClientY = Math.round(clientY / scale);
 
@@ -656,6 +695,8 @@ class OperateLine {
 
   updateDragLine(clientX: number, clientY: number) {
     const scale = this.tableBetter.scale || 1;
+
+    // Conversion (toujours la même chose normalement ça devrait aller pour comprendre)
     const sClientX = Math.round(clientX / scale);
     const sClientY = Math.round(clientY / scale);
 
@@ -678,10 +719,14 @@ class OperateLine {
 
   updateDragTable(clientX: number, clientY: number) {
     const scale = this.tableBetter.scale || 1;
+
+    // Conversion encore
     const sClientX = Math.round(clientX / scale);
     const sClientY = Math.round(clientY / scale);
 
     let { top, left } = this.dragTable.getBoundingClientRect();
+
+    // Conversion logique
     top = Math.round(top / scale);
     left = Math.round(left / scale);
 
