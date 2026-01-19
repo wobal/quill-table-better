@@ -338,7 +338,7 @@ class OperateLine {
 
       setElementProperty(node as HTMLElement, { width: sWidth });
 
-      // FIX 2 : On s'assure que min-width est nettoyé sur la colonne
+      // On s'assure que min-width est nettoyé sur la colonne
       if (!isPercent) {
         (node as HTMLElement).style.setProperty('width', sWidth, 'important');
         (node as HTMLElement).style.removeProperty('min-width');
@@ -538,7 +538,7 @@ class OperateLine {
       domNode.style.setProperty('width', width);
     } else {
       setElementAttribute(domNode, { width });
-      // FIX 2 : On s'assure que min-width est nettoyé sur la colonne
+      // On s'assure que min-width est nettoyé sur la colonne
       domNode.style.removeProperty('min-width');
     }
   }
@@ -553,7 +553,6 @@ class OperateLine {
     const cellsCollection = rowspan > 1 ? this.getVerticalCells(cell, rowspan) : cell.parentElement.children;
     const cells = Array.from(cellsCollection) as HTMLElement[];
 
-    // 2. Récupération de la ligne parente (TR)
     // Attention : Si rowspan > 1, 'cells' contient les cellules de la ligne du BAS. 
     // Il faut récupérer le TR de cette ligne du bas, pas celui de la cellule de départ.
     const row = cells[0].parentElement as HTMLElement;
@@ -629,7 +628,6 @@ class OperateLine {
         this.hideDragTable();
       }
 
-      // FIX 3 : REVERROUILLAGE FINAL (SNAPSHOT)
       // Une fois le drag fini, on repose le filet de sécurité via un setTimeout
       setTimeout(() => {
         if (tableNode) {
@@ -649,7 +647,6 @@ class OperateLine {
       e.preventDefault();
       const { tableNode } = this.options;
 
-      // FIX 1 : DÉVERROUILLAGE (Clean Slate)
       // On retire le min-width au clic pour permettre le rétrécissement
       if (tableNode) {
         tableNode.style.removeProperty('min-width');

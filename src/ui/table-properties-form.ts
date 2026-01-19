@@ -696,6 +696,7 @@ class TablePropertiesForm {
     const tableBlot = Quill.find(table) as TableContainer;
     const td = table.querySelector('td,th');
     const attrs = this.getDiffProperties();
+
     const MIN_COL_WIDTH = 30;
     const MIN_ROW_HEIGHT = 22;
 
@@ -722,8 +723,13 @@ class TablePropertiesForm {
 
     if (colsCount === 0) colsCount = 1;
 
-    // B. Le Minimum du Tableau = Nb Colonnes * 30px
+    // B. Le Minimum du Largeur = Nb Colonnes * 30px
     const REQUIRED_TABLE_WIDTH = colsCount * MIN_COL_WIDTH;
+
+    // C. Le Minimum hauteur = Nb Lignes * 22px
+    const rows = table.querySelectorAll('tr');
+    const rowsCount = rows.length || 1;
+    const REQUIRED_TABLE_HEIGHT = rowsCount * MIN_ROW_HEIGHT;
 
     let targetWidthStr = this.attrs['width'];
 
@@ -763,7 +769,9 @@ class TablePropertiesForm {
       const rawH = parseFloat(currentHeight);
       if (!isNaN(rawH)) {
         if (!currentHeight.endsWith('%') && !currentHeight.endsWith('px')) currentHeight += 'px';
-        if (rawH < MIN_ROW_HEIGHT) currentHeight = `${MIN_ROW_HEIGHT}px`;
+        if (rawH < REQUIRED_TABLE_HEIGHT) {
+          currentHeight = `${REQUIRED_TABLE_HEIGHT}px`;
+        }
         attrs['height'] = currentHeight;
       }
     }
