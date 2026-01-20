@@ -1,8 +1,9 @@
 import Quill from 'quill';
-import type {
-  QuillTableBetter,
-  TableCell,
-  TableColgroup
+import {
+  CellSelection,
+  type QuillTableBetter,
+  type TableCell,
+  type TableColgroup
 } from '../types';
 import {
   getCorrectWidth,
@@ -111,15 +112,60 @@ class OperateLine {
   }
 
   getLevelColSum(cell: Element) {
-    let previousNode = cell;
-    let sum = 0;
-    while (previousNode) {
-      const colspan = ~~previousNode.getAttribute('colspan') || 1;
-      sum += colspan;
-      // @ts-ignore
-      previousNode = previousNode.previousSibling;
+    const row = cell.closest('tr');
+    if (!row) return 0;
+    const table = row.closest('table');
+    if (!table) return 0;
+
+    // récupération de toutes les lignes
+    const rows = Array.from(table.rows);
+    const targetRowIndex = rows.indexOf(row);
+    if (targetRowIndex < 0) return 0;
+
+    // Tableau pour suivre les rowspan actifs par colonnes
+    const spans: number[] = [];
+
+    for (let r = 0; r <= targetRowIndex; r++) {
+      const currentRow = rows[r];
+      const cells = Array.from(currentRow.children);
+      let c = 0; // cellule DOM
+      let i = 0; // colonne Visuelle
+
+      while (c < cells.length) {
+        // sauter les colonnes occupées par des fusions du dessus
+        while (spans[i] > 0) {
+          spans[i]--; // On consomme une ligne de fusion
+          i++;
+        }
+
+        const currentCell = cells[c];
+        const colspan = ~~currentCell.getAttribute('colspan') || 1;
+        const rowspan = ~~currentCell.getAttribute('rowspan') || 1;
+
+        // si c'est la cellule cible, on retourne l'index de fin
+        if (currentCell === cell) {
+          return i + colspan;
+        }
+
+        // On enregistre les rowspans pour les lignes suivantes.
+        if (rowspan > 1) {
+          for (let k = 0; k < colspan; k++) {
+            spans[i + k] = rowspan - 1;
+          }
+        }
+
+        // Avancer
+        i += colspan;
+        c++;
+      }
+
+      // Nettoyage des spans restants pour cette ligne (si la ligne est plus courte que le tableau)
+      while (i < spans.length) {
+        if (spans[i] > 0) spans[i]--;
+        i++;
+      }
     }
-    return sum;
+    return 0;
   }
 
   getMaxColNum(cell: Element) {
