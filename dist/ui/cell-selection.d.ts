@@ -1,0 +1,83 @@
+import Quill from 'quill';
+import { BlockBlot, EmbedBlot } from 'parchment';
+import type { AttributeMap, Op } from 'quill-delta';
+import type { QuillTableBetter, TableCellChildren, TableContainer } from '../types';
+import { TableCell, TableRow } from '../formats/table';
+declare class CellSelection {
+    quill: Quill;
+    selectedTds: Element[];
+    startTd: Element;
+    endTd: Element;
+    disabledList: Array<HTMLElement | Element>;
+    singleList: Array<HTMLElement | Element>;
+    tableBetter: QuillTableBetter;
+    constructor(quill: Quill, tableBetter: QuillTableBetter);
+    attach(input: HTMLElement): void;
+    clearSelected(): void;
+    exitTableFocus(block: TableCellChildren, up: boolean): void;
+    getButtonsWhiteList(): [string[], string[]];
+    getCopyColumns(container: Element): number;
+    getCopyData(): {
+        html: string;
+        text: string;
+    };
+    getCorrectDisabled(input: HTMLElement, format: string): Element[];
+    getCorrectRow(td: Element, key: string): HTMLElement;
+    getCorrectValue(format: string, value: boolean | string): string | boolean;
+    getListCorrectValue(format: string, value: boolean | string, formats?: AttributeMap): string | boolean;
+    getPasteComputeBounds(startTd: Element, rightTd: Element, row: TableRow): {
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+    };
+    getPasteInfo(td: Element, copyColumns: number, rowspan: number): ({
+        clospan: number;
+        cloTd: Element;
+        rowspan?: undefined;
+        rowTd?: undefined;
+    } | {
+        rowspan: number;
+        rowTd: Element;
+        clospan?: undefined;
+        cloTd?: undefined;
+    })[];
+    getPasteLastRow(row: TableRow, len: number): TableRow;
+    getPasteTds(computeSelectedTds: Element[]): Element[][];
+    getTableArrowVerticalRow(cell: TableCell, up: boolean): TableRow;
+    getText(html: string): string;
+    handleClick(e: MouseEvent): void;
+    handleDeleteKeyup(e: KeyboardEvent): void;
+    handleKeyup(e: KeyboardEvent): void;
+    handleMousedown(e: MouseEvent): void;
+    hasTdTh(selectedTds: Element[]): {
+        hasTd: boolean;
+        hasTh: boolean;
+    };
+    initDocumentListener(): void;
+    initWhiteList(): void;
+    insertColumnCell(table: TableContainer, offset: number): void;
+    insertRow(table: TableContainer, offset: number, td: Element): void;
+    insertWith(insert: string | Record<string, unknown>): boolean;
+    isContinue(op: Op): boolean;
+    lines(blot: TableCell): (BlockBlot | EmbedBlot)[];
+    makeTableArrowLevelHandler(key: string): void;
+    makeTableArrowVerticalHandler(key: string): void;
+    onCaptureCopy(e: ClipboardEvent, isCut?: boolean): void;
+    onCapturePaste(e: ClipboardEvent): void;
+    pasteSelectedTd(selectedTd: Element, copyTd: Element): TableCell;
+    removeCursor(): void;
+    removeSelectedTdContent(td: Element): void;
+    removeSelectedTdsContent(): void;
+    setCorrectPositionTds(startTd: Element, endTd: Element, selectedTds: Element[]): void;
+    setDisabled(disabled: boolean): void;
+    setHeaderRowSwitch(): void;
+    setMenuDisable(category: string): void;
+    setSelected(target: Element, force?: boolean): void;
+    setSelectedTds(selectedTds: Element[]): void;
+    setSelectedTdsFormat(format: string, value: boolean | string): void;
+    setSingleDisabled(): void;
+    tableArrowSelection(up: boolean, cellBlot: TableCell): void;
+    updateSelected(type: string): void;
+}
+export default CellSelection;
