@@ -109,7 +109,6 @@ class Table extends Module {
     this.scale = options.scale !== undefined ? options.scale : 1;
     this.colors = options.colors !== undefined ? options.colors : [];
     this.nowarn = options.nowarn !== undefined ? options.nowarn : false;
-    console.log("caca2");
   }
 
   clearHistorySelected() {
