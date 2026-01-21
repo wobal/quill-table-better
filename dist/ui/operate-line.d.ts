@@ -1,5 +1,5 @@
 import Quill from 'quill';
-import { type QuillTableBetter, type TableColgroup } from '../types';
+import type { QuillTableBetter, TableColgroup } from '../types';
 interface Options {
     tableNode: HTMLElement;
     cellNode: Element;
