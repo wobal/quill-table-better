@@ -115,6 +115,7 @@ class OperateLine {
     // @ts-ignore
     if (!row || row.tagName !== 'TR') return 0;
 
+    console.log("22/01/2026 09:54:37")
     const table = row.closest('table') as HTMLTableElement;
     if (!table) return 0;
 
