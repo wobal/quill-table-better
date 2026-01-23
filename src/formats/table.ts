@@ -129,7 +129,7 @@ class TableCell extends Container {
     }
     return false;
   }
-  
+
   static create(value: Props) {
     const node = super.create() as HTMLElement;
     const keys = Object.keys(value);
@@ -230,7 +230,7 @@ class TableCell extends Container {
 
   optimize(context?: unknown) {
     super.optimize(context);
-    
+
     this.children.forEach((child: TableCellAllowedChildren) => {
       if (child.next == null) return;
       const childFormats = getCellId(child.formats()[child.statics.blotName]);
@@ -425,7 +425,7 @@ class TableContainer extends Container {
   static tagName = 'TABLE';
 
   children: LinkedList<TableBody | TableTemporary | TableColgroup>;
-  
+
   colgroup() {
     // @ts-expect-error
     const [colgroup] = this.descendant(TableColgroup);
@@ -815,12 +815,12 @@ class TableContainer extends Container {
       } else if (Math.abs(right - position) <= DEVIATION && !ref.next) {
         columnCells.push([row, props, null, prev]);
         break;
-      // rowspan > 1 (insertLeft, position + w is left)
+        // rowspan > 1 (insertLeft, position + w is left)
       } else if (Math.abs(left - position - width) <= DEVIATION) {
         columnCells.push([row, props, ref, prev]);
         break;
-      // rowspan > 1 (position between left and right, rowspan++)
-      } else if (position > left && position < right) {
+        // rowspan > 1 (position between left and right, rowspan++)
+      } else if (position > left && position < right && Math.abs(right - position) > DEVIATION) {
         columnCells.push([null, props, ref, prev]);
         break;
       }

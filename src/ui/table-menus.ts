@@ -92,7 +92,10 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
           content: useLanguage('insColL'),
           handler() {
             const { leftTd } = this.getSelectedTdsInfo();
-            const bounds = this.table.getBoundingClientRect();
+            const computedStyle = getComputedStyle(this.table);
+            const width = parseFloat(computedStyle.width) || this.table.getBoundingClientRect().width;
+            const bounds = { width } as DOMRect;
+
             this.insertColumn(leftTd, 0);
             updateTableWidth(this.table, bounds, CELL_DEFAULT_WIDTH);
             this.updateMenus();
@@ -102,7 +105,10 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
           content: useLanguage('insColR'),
           handler() {
             const { rightTd } = this.getSelectedTdsInfo();
-            const bounds = this.table.getBoundingClientRect();
+            const computedStyle = getComputedStyle(this.table);
+            const width = parseFloat(computedStyle.width) || this.table.getBoundingClientRect().width;
+            const bounds = { width } as DOMRect;
+
             this.insertColumn(rightTd, 1);
             updateTableWidth(this.table, bounds, CELL_DEFAULT_WIDTH);
             this.updateMenus();
@@ -454,7 +460,10 @@ class TableMenus {
 
   deleteColumn(isKeyboard: boolean = false) {
     const { computeBounds, leftTd, rightTd } = this.getSelectedTdsInfo();
-    const bounds = this.table.getBoundingClientRect();
+    const computedStyle = getComputedStyle(this.table);
+    const width = parseFloat(computedStyle.width) || this.table.getBoundingClientRect().width;
+    const bounds = { width } as DOMRect;
+
     const selectTds = getComputeSelectedTds(computeBounds, this.table, this.quill.container, 'column');
     const deleteCols = getComputeSelectedCols(computeBounds, this.table, this.quill.container);
     const tableBlot = (Quill.find(leftTd) as TableCell).table();
@@ -462,7 +471,13 @@ class TableMenus {
     if (isKeyboard && selTds.length !== this.tableBetter.cellSelection.selectedTds.length) return;
     this.tableBetter.cellSelection.updateSelected('column');
     tableBlot.deleteColumn(changeTds, selTds, this.deleteTable.bind(this), deleteCols);
-    updateTableWidth(this.table, bounds, computeBounds.left - computeBounds.right);
+    // Utilisation de la largeur visuelle exacte de la sélection
+    const scale = this.tableBetter.scale || 1;
+    const visualWidthToRemove = computeBounds.right - computeBounds.left;
+    // On convertit en logique pour l'appliquer au style CSS
+    const logicalDiff = visualWidthToRemove / scale;
+
+    updateTableWidth(this.table, bounds, -logicalDiff);
     this.updateMenus();
   }
 
