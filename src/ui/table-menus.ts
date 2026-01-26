@@ -683,21 +683,27 @@ class TableMenus {
   }
 
   getRefInfo(row: TableRow, right: number) {
+    if (!row) return { id: tableId(), ref: null };
     let ref = null;
-    if (!row) return { id: tableId(), ref };
+
+    // Si la ligne est vide (ou n'a pas de cellules visuelles), ref=null pour append
     let td = row.children.head;
+    if (!td) {
+      return { id: tableId(), ref: null };
+    }
+
     const id = td.domNode.getAttribute('data-row');
     while (td) {
       const { left } = td.domNode.getBoundingClientRect();
       if (Math.abs(left - right) <= DEVIATION) {
         return { id, ref: td };
-        // The nearest cell of a multi-row cell
       } else if (Math.abs(left - right) >= DEVIATION && !ref) {
         ref = td;
       }
       td = td.next;
     }
-    return { id, ref };
+    // Si on dépasse la fin, on renvoie null pour ajouter à la fin
+    return { id, ref: null };
   }
 
   getSelectedTdAttrs(td: HTMLElement) {
@@ -897,48 +903,8 @@ class TableMenus {
     }
     cellsToRemove.forEach(cell => cell.remove());
 
-    const rowsToDelete: TableRow[] = [];
-    rowsToCheck.forEach(row => {
-      if ((row.domNode as HTMLElement).childElementCount === 0) {
-        rowsToDelete.push(row);
-      }
-    });
-
-    if (rowsToDelete.length > 0) {
-      const allCells = tableBlot.descendants(TableCell);
-      const deletedRowIndices = rowsToDelete.map(r =>
-        (r.domNode as HTMLTableRowElement).rowIndex
-      ).sort((a, b) => a - b);
-
-      allCells.forEach((cell) => {
-        if (cell.domNode === leftTd) return;
-        const rowspan = ~~cell.domNode.getAttribute('rowspan') || 1;
-        if (rowspan <= 1) return;
-
-        const cellTr = cell.domNode.parentElement as HTMLTableRowElement;
-        const startIndex = cellTr.rowIndex;
-        const endIndex = startIndex + rowspan - 1;
-
-        let overlappingDeletions = 0;
-        for (const delIndex of deletedRowIndices) {
-          if (delIndex > startIndex && delIndex <= endIndex) {
-            overlappingDeletions++;
-          }
-        }
-
-        if (overlappingDeletions > 0) {
-          const [cFormats] = getCellFormats(cell);
-          if (cFormats['height']) delete cFormats['height'];
-          const newRowspan = Math.max(1, rowspan - overlappingDeletions);
-          cell.replaceWith(cell.statics.blotName, { ...cFormats, rowspan: newRowspan });
-        }
-      });
-    }
-
-    rowsToDelete.forEach(row => row.remove());
-
     leftTdBlot.setChildrenId(cellId);
-    const finalRowspan = Math.max(1, initialRowCount - rowsToDelete.length);
+    const finalRowspan = initialRowCount;
 
     // On prépare les formats
     formats['height'] = `${totalLogicalHeight}px`;
@@ -948,15 +914,12 @@ class TableMenus {
     cssStyle += `height: ${totalLogicalHeight}px !important;`;
     formats['style'] = cssStyle;
 
-    // Au lieu de formater l'enfant (head.format), on REMPLACE la cellule conteneur (replaceWith).
-    // Cela garantit une structure DOM propre immédiatement.
     const newCellBlot = leftTdBlot.replaceWith(leftTdBlot.statics.blotName, {
       ...formats,
       colspan,
       rowspan: finalRowspan
     });
 
-    // Force brute Style (par sécurité) sur le nouveau blot
     const newCellNode = newCellBlot.domNode as HTMLElement;
     newCellNode.style.height = `${totalLogicalHeight}px`;
     newCellNode.style.setProperty('height', `${totalLogicalHeight}px`, 'important');
