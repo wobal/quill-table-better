@@ -1002,15 +1002,20 @@ class TableMenus {
     const leftTdBlot = Quill.find(leftTd) as TableCell;
     const head = leftTdBlot.children.head;
     for (const td of selectedTds) {
+      // Lecture correcte des dimensions
+      const computedStyle = getComputedStyle(td);
+      const logicalWidth = parseFloat(computedStyle.width) || td.getBoundingClientRect().width;
+      const { right } = td.getBoundingClientRect();
+
       const colspan = ~~td.getAttribute('colspan') || 1;
       const rowspan = ~~td.getAttribute('rowspan') || 1;
       if (colspan === 1 && rowspan === 1) continue;
       const columnCells: [TableRow, string, TableCell | null][] = [];
-      const { width, right } = td.getBoundingClientRect();
       const blot = Quill.find(td) as TableCell;
       const tableBlot = blot.table();
       const nextBlot = blot.next;
       const rowBlot = blot.row();
+
       if (rowspan > 1) {
         if (colspan > 1) {
           let nextRowBlot = rowBlot.next;
@@ -1036,16 +1041,44 @@ class TableMenus {
           columnCells.push([rowBlot, id, nextBlot]);
         }
       }
+
+      // calcul de la largeur
+      const newCellWidth = Math.floor(logicalWidth / colspan)
+
       for (const [row, id, ref] of columnCells) {
-        tableBlot.insertColumnCell(row, id, ref);
+        const newCell = tableBlot.insertColumnCell(row, id, ref);
+        // On applique la nouvele largeur aux nouvelles cellules
+        if (newCell && newCell.domNode) {
+          const el = newCell.domNode as HTMLElement;
+          el.style.width = `${newCellWidth}px`;
+          // Au cas ou c'est en pourcentage
+          if (!newCellWidth.toString().endsWith('%')) {
+            el.setAttribute('width', `${newCellWidth}`);
+          }
+        }
       }
       const [formats] = getCellFormats(blot);
-      blot.replaceWith(blot.statics.blotName, {
-        ...formats,
-        width: ~~(width / colspan),
-        colspan: null,
-        rowspan: null
-      });
+
+      // Nettoyage des styles de fusion (ca va pas être très beau mais tant que ça marche ne nous plaignons pas)
+      if (formats['height']) delete formats['height'];
+      if (formats['rowspan']) delete formats['rowspan'];
+      if (formats['colspan']) delete formats['colspan'];
+
+      // Nettoyage du style inline
+      if (formats['style']) {
+        formats['style'] = formats['style'].replace(/height\s*:\s*[^;]+;?/gi, '');
+      }
+
+      // Gestion du colspan
+      if (colspan > 1) {
+        if (formats['width']) delete formats['width'];
+        if (formats['style']) {
+          formats['style'] = formats['style'].replace(/width\s*:\s*[^;]+;?/gi, '');
+        }
+        formats['width'] = `${newCellWidth}px`
+      }
+
+      blot.replaceWith(blot.statics.blotName, formats);
     }
     this.tableBetter.cellSelection.setSelected(head.parent.domNode);
     this.quill.scrollSelectionIntoView();
