@@ -1,5 +1,5 @@
 import type { Props, UseLanguageHandler } from '../types';
-import { isValidColor, isValidDimensions } from '../utils';
+import { isValidColor, isValidThomas } from '../utils';
 interface Options {
     type: string;
     attribute: Props;
@@ -45,7 +45,7 @@ declare function getProperties({ type, attribute }: Options, useLanguage: UseLan
                 type: string;
                 placeholder: string;
             };
-            valid: typeof isValidDimensions;
+            valid: typeof isValidThomas;
             message: string;
             menus?: undefined;
         } | {

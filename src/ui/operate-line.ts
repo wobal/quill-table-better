@@ -729,7 +729,7 @@ class OperateLine {
 
     const handleMousedown = (e: MouseEvent) => {
       e.preventDefault();
-      const { tableNode } = this.options;
+      const { tableNode, cellNode } = this.options;
 
       // On retire le min-width au clic pour permettre le rétrécissement
       if (tableNode) {

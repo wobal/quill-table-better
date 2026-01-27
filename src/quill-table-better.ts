@@ -200,13 +200,16 @@ class Table extends Module {
         // @ts-expect-error
         const length = tableBlot.length();
         const range = this.quill.getSelection();
-        const minIndex = Math.min(range.index, index);
-        const maxIndex = Math.max(range.index + range.length, index + length);
-        this.quill.setSelection(
-          minIndex,
-          maxIndex - minIndex,
-          Quill.sources.USER
-        );
+        // Le if range c'est Thomas (moi) qui l'a mis pour fix un soucis de bug dans la console. 
+        if (range) {
+          const minIndex = Math.min(range.index, index);
+          const maxIndex = Math.max(range.index + range.length, index + length);
+          this.quill.setSelection(
+            minIndex,
+            maxIndex - minIndex,
+            Quill.sources.USER
+          );
+        }
       }
       this.quill.root.removeEventListener('mousemove', handleMouseMove);
       this.quill.root.removeEventListener('mouseup', handleMouseup);

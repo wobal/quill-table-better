@@ -46,7 +46,7 @@ function debounce(cb: Function, delay: number) {
   return function () {
     let context = this;
     let args = arguments;
-    if(timer) clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     timer = setTimeout(function () {
       cb.apply(context, args);
     }, delay);
@@ -195,14 +195,14 @@ function getComputeSelectedTds(
 
 function getCopyTd(html: string) {
   return html
-  .replace(/data-(?!list)[a-z]+="[^"]*"/g, '')
-  .replace(/class="[^"]*"/g, collapse => {
-    return collapse
-      .replace(/ql-cell-[^"]*/g, '')
-      .replace(/ql-table-[^"]*/, '')
-      .replace(/table-list(?:[^"]*)?/g, '');
-  })
-  .replace(/class="\s*"/g, '');
+    .replace(/data-(?!list)[a-z]+="[^"]*"/g, '')
+    .replace(/class="[^"]*"/g, collapse => {
+      return collapse
+        .replace(/ql-cell-[^"]*/g, '')
+        .replace(/ql-table-[^"]*/, '')
+        .replace(/table-list(?:[^"]*)?/g, '');
+    })
+    .replace(/class="\s*"/g, '');
 }
 
 function getCorrectBounds(target: Element, container: Element = target) {
@@ -290,15 +290,25 @@ function isValidColor(color: string) {
   return isSimpleColor(color);
 }
 
-function isValidDimensions(value: string) {
+
+function isValidThomas(value: string) {
   if (!value) return true;
-  const unit = value.replace(/\d+\.?\d*/, ''); // 'px' or 'em' or '%'
-  if (!unit) return true;
-  if (unit !== 'px' && unit !== 'em' && unit !== '%') {
-    return !/[a-z]/.test(unit) && !isNaN(parseFloat(unit));
-  }
-  return true;
+
+  // On découpe la chaîne par les espaces pour récupérer chaque valeur
+  const parts = value.trim().split(/\s+/);
+
+  // On accepte uniquement 1, 2 ou 4 valeurs (ex: "10px", "10px 20px", "10px 20px 10px 20px")
+  if (![1, 2, 4].includes(parts.length)) return false;
+
+  // Regex : Un nombre (entier ou flottant) suivi optionnellement d'une unité (px, em, %)
+  // ^\d+(\.\d+)?  => Nombre (ex: 10 ou 10.5)
+  // (px|em|%)?    => Unité optionnelle
+  const regex = /^\d+(\.\d+)?(px|em|%)?$/;
+
+  // Toutes les parties doivent valider la regex
+  return parts.every(part => regex.test(part));
 }
+
 
 function removeElementProperty(node: HTMLElement, properties: string[]) {
   for (const property of properties) {
@@ -358,7 +368,7 @@ function throttle(cb: Function, delay: number) {
 
 function throttleStrong(cb: Function, delay: number) {
   let last = 0, timer: NodeJS.Timeout = null;
-  return function () { 
+  return function () {
     let context = this;
     let args = arguments;
     let now = +new Date();
@@ -435,7 +445,7 @@ export {
   getElementStyle,
   isDimensions,
   isValidColor,
-  isValidDimensions,
+  isValidThomas,
   removeElementProperty,
   rgbToHex,
   rgbaToHex,
