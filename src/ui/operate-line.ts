@@ -2,7 +2,8 @@ import Quill from 'quill';
 import type {
   QuillTableBetter,
   TableCell,
-  TableColgroup
+  TableColgroup,
+  CorrectBound
 } from '../types';
 import {
   getCorrectWidth,
@@ -358,7 +359,19 @@ class OperateLine {
     const colgroup = tableBlot.colgroup() as TableColgroup;
     // @ts-ignore
     const colSum = this.getLevelColSum(cell);
-    let bounds = tableBlot.domNode.getBoundingClientRect();
+
+    let boundsRaw = tableBlot.domNode.getBoundingClientRect();
+    let bounds = {
+      left: boundsRaw.left,
+      top: boundsRaw.top,
+      right: boundsRaw.right,
+      bottom: boundsRaw.bottom,
+      width: boundsRaw.width,
+      height: boundsRaw.height
+    };
+
+    const maxCols = this.getMaxColNum(cell);
+    const minTableWidth = maxCols * MIN_WIDTH;
 
     const applyWidth = (node: Element, logicalW: number) => {
       const w = Math.round(logicalW);
@@ -384,6 +397,13 @@ class OperateLine {
 
         let currentAttrW = parseInt(col.domNode.getAttribute('width'));
         let oldW = !isNaN(currentAttrW) ? currentAttrW : Math.round(col.domNode.getBoundingClientRect().width / scale);
+        let currentTableWidth = Math.round(bounds.width / scale);
+
+        if ((currentTableWidth - oldW + newW) < minTableWidth) {
+          newW = minTableWidth - (currentTableWidth - oldW);
+        }
+        if (newW < MIN_WIDTH) newW = MIN_WIDTH;
+
         let diff = newW - oldW;
 
         if (diff !== 0) {
@@ -391,7 +411,7 @@ class OperateLine {
           bounds.width = bounds.width / scale;
           const tableNode = tableBlot.domNode;
           const newTotalW = bounds.width + diff;
-          updateTableWidth(tableNode, bounds, diff);
+          updateTableWidth(tableNode, bounds as CorrectBound, diff);
           tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
         }
         return;
@@ -429,6 +449,14 @@ class OperateLine {
         const firstCell = cell;
         let currentAttrW = parseInt(firstCell.getAttribute('width'));
         let oldW = !isNaN(currentAttrW) ? currentAttrW : Math.round(firstCell.getBoundingClientRect().width / scale);
+        let currentTableWidth = Math.round(bounds.width / scale);
+
+        if ((currentTableWidth - oldW + newW) < minTableWidth) {
+          newW = minTableWidth - (currentTableWidth - oldW);
+        }
+        if (newW < MIN_WIDTH) newW = MIN_WIDTH;
+
+
         let diff = newW - oldW;
 
         bounds.width = bounds.width / scale;
@@ -541,7 +569,15 @@ class OperateLine {
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const isPercent = tableBlot.isPercent();
     const colgroup = tableBlot.colgroup() as TableColgroup;
-    let bounds = tableBlot.domNode.getBoundingClientRect();
+    let boundsRaw = tableBlot.domNode.getBoundingClientRect();
+    const bounds: CorrectBound = {
+      left: boundsRaw.left,
+      top: boundsRaw.top,
+      right: boundsRaw.right,
+      bottom: boundsRaw.bottom,
+      width: boundsRaw.width,
+      height: boundsRaw.height
+    };
 
     for (const row of rows) {
       const cells = row.children;
@@ -732,8 +768,10 @@ class OperateLine {
       const { tableNode, cellNode } = this.options;
 
       // On retire le min-width au clic pour permettre le rétrécissement
-      if (tableNode) {
-        tableNode.style.removeProperty('min-width');
+      if (tableNode && cellNode) {
+        const colsCount = this.getMaxColNum(cellNode);
+        const safeMinW = colsCount * MIN_WIDTH;
+        tableNode.style.setProperty('min-width', `${safeMinW}px`, 'important');
       }
 
       if (isLine) {
