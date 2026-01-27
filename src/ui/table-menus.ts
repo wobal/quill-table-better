@@ -734,6 +734,7 @@ class TableMenus {
     }
     for (const key of Object.keys(attribute)) {
       if (map.has(key)) {
+        if (['border-color', 'border-style', 'border-width'].includes(key)) continue;
         attribute[key] = CELL_DEFAULT_VALUES[key];
       }
     }

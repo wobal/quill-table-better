@@ -15,8 +15,6 @@ import TableList, { ListContainer } from '../formats/list';
 import TableHeader from '../formats/header';
 import { COLORS, DEVIATION } from '../config';
 
-const MIN_COL_WIDTH = 30;
-
 function addDimensionsUnit(value: string) {
   if (!value) return value;
   const unit = value.replace(/\d+\.?\d*/, ''); // 'px' or 'em' or '%'
@@ -410,28 +408,15 @@ function updateTableWidth(
     } else {
       let _width = 0;
       const cols = colgroup.domNode.querySelectorAll('col');
-
-      // Securite (Nb colonnes * 30px)
-      const minSafeWidth = cols.length * MIN_COL_WIDTH;
-
       for (const col of cols) {
         const width = ~~col.getAttribute('width');
         _width += width;
       }
-
-      // on fait en sorte que la valeur temporaire ne puisse pas passer sous la limite
-      if (_width < minSafeWidth) _width = minSafeWidth;
-
       setElementProperty(temporary.domNode, {
         width: getCorrectWidth(_width, isPercent)
       });
     }
   } else {
-    // On reste cohérent
-    let newW = tableBounds.width + change;
-    if (newW < MIN_COL_WIDTH) newW = MIN_COL_WIDTH;
-
-
     setElementProperty(temporary.domNode, {
       width: getCorrectWidth(tableBounds.width + change, isPercent)
     });
