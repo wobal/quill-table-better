@@ -201,8 +201,25 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
       content: useLanguage('tblProps'),
       icon: tableIcon,
       handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
+        const styles = getElementStyle(this.table, TABLE_PROPERTIES)
+
+        // On récupère le scale pour les conversions
+        const scale = this.tableBetter.scale || 1;
+
+        // Valeur visuelle pour éviter d'autres valeurs impossibles sur width/height
+        if (styles.width && !styles.width.endsWith('%')) {
+          const rect = this.table.getBoundingClientRect();
+          styles.width = `${Math.round(rect.width / scale)}px`;
+        }
+
+        if (styles.height && !styles.height.endsWith('%')) {
+          const rect = this.table.getBoundingClientRect();
+          styles.height = `${Math.round(rect.height / scale)}px`
+        }
+
+
         const attribute = {
-          ...getElementStyle(this.table, TABLE_PROPERTIES),
+          ...styles,
           'align': this.getTableAlignment(this.table)
         };
         this.toggleAttribute(list, tooltip);
