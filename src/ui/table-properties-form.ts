@@ -573,6 +573,7 @@ class TablePropertiesForm {
     const tableBlot = Quill.find(table) as TableContainer;
     const colgroup = tableBlot.colgroup();
     const isPercent = tableBlot.isPercent();
+    const scale = this.tableMenus.tableBetter.scale || 1;
 
     // 1. Récupération des changements (couleurs, align...)
     const attrs = this.getDiffProperties();
@@ -618,11 +619,64 @@ class TablePropertiesForm {
       }
     }
 
+    if (attrs['width']) {
+      let floatW = parseFloat(attrs['width']);
+      let widthPx =
+        attrs['width']?.endsWith('%')
+          ? floatW * getCorrectContainerWidth() / 100
+          : floatW;
+
+      const tableRect = table.getBoundingClientRect();
+      const currentTableWidth = tableRect.width / scale;
+
+      let totalColsCount = 0;
+      if (colgroup) {
+        totalColsCount = colgroup.domNode.children.length;
+      } else {
+        const firstRow = table.querySelector('tr');
+        if (firstRow) totalColsCount = firstRow.children.length;
+      }
+
+      // On compte les colonnes sélectionnées
+      const { computeBounds } = this.tableMenus.getSelectedTdsInfo();
+      // On utilise une estimation fiable basée sur la sélection si pas de cols
+      const cols = getComputeSelectedCols(computeBounds, table, quill.container);
+      const selectedColsCount = cols.length > 0 ? cols.length : selectedTds.length; // Fallback approximatif si pas de colgroup
+
+      // 3. Calcul du plafond
+      if (totalColsCount > 0 && selectedColsCount > 0) {
+        const unselectedColsCount = Math.max(0, totalColsCount - selectedColsCount);
+
+        // On réserve 30px par colonne voisine + 1px de marge de sécurité par colonne
+        const reservedSpace = unselectedColsCount * (MIN_WIDTH + 1);
+
+        // Espace restant pour la sélection
+        const maxAvailableTotal = Math.max(0, currentTableWidth - reservedSpace);
+
+        // Max par colonne sélectionnée
+        const maxPerCol = maxAvailableTotal / selectedColsCount;
+
+        // 4. Application du bridage
+        if (widthPx > maxPerCol) {
+          widthPx = Math.floor(maxPerCol);
+          if (widthPx < MIN_WIDTH) widthPx = MIN_WIDTH;
+
+          // Mise à jour de la valeur qui sera utilisée partout
+          if (attrs['width'].endsWith('%')) {
+            const containerW = getCorrectContainerWidth();
+            const newPct = (widthPx / containerW) * 100;
+            attrs['width'] = `${newPct.toFixed(2)}%`;
+          } else {
+            attrs['width'] = `${widthPx}px`;
+          }
+        }
+      }
+    }
+
     const floatW = parseFloat(attrs['width']);
-    const width =
-      attrs['width']?.endsWith('%')
-        ? floatW * getCorrectContainerWidth() / 100
-        : floatW;
+    const width = attrs['width']?.endsWith('%')
+      ? floatW * getCorrectContainerWidth() / 100
+      : floatW;
 
     const align = attrs['text-align'];
     align && delete attrs['text-align'];
@@ -632,6 +686,7 @@ class TablePropertiesForm {
       const { operateLine } = this.tableMenus.tableBetter;
       const { computeBounds } = this.tableMenus.getSelectedTdsInfo();
       const cols = getComputeSelectedCols(computeBounds, table, quill.container);
+
       for (const col of cols) {
         operateLine.setColWidth(col as HTMLElement, `${width}`, isPercent);
 

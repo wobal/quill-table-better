@@ -200,7 +200,7 @@ class Table extends Module {
         // @ts-expect-error
         const length = tableBlot.length();
         const range = this.quill.getSelection();
-        // Le if range c'est Thomas (moi) qui l'a mis pour fix un soucis de bug dans la console. 
+        // Le if range c'est Thomas (moi) qui l'a mis pour fix un soucis de bug dans la console.
         if (range) {
           const minIndex = Math.min(range.index, index);
           const maxIndex = Math.max(range.index + range.length, index + length);
