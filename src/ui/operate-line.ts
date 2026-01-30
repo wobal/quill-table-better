@@ -712,6 +712,8 @@ class OperateLine {
         this.hideDragTable();
       }
 
+
+
       // Une fois le drag fini, on repose le filet de sécurité via un setTimeout
       setTimeout(() => {
         if (tableNode) {

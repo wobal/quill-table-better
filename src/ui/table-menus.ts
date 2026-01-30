@@ -872,77 +872,113 @@ class TableMenus {
 
   mergeCells() {
     const { selectedTds } = this.tableBetter.cellSelection;
-    const { leftTd } = this.getSelectedTdsInfo();
+    const { computeBounds, leftTd } = this.getSelectedTdsInfo();
     const leftTdBlot = Quill.find(leftTd) as TableCell;
-    const tableBlot = leftTdBlot.table();
-    const scale = this.tableBetter.scale || 1;
-
     const [formats, cellId] = getCellFormats(leftTdBlot);
-    if (formats['height']) delete formats['height'];
-    if (formats['style']) formats['style'] = formats['style'].replace(/height\s*:\s*[^;]+;?/gi, '');
+    const head = leftTdBlot.children.head;
+    const tableBlot = leftTdBlot.table();
+    const rows = tableBlot.tbody().children as LinkedList<TableRow>;
+    const row = leftTdBlot.row();
 
-    // Identification des lignes (Scan DOM)
-    const rowsToCheck = this.getCorrectRows();
-    const initialRowCount = rowsToCheck.length;
-
-    let totalVisualHeight = 0;
-    rowsToCheck.forEach(row => {
-      const rect = row.domNode.getBoundingClientRect();
-      if (rect.height > 0) totalVisualHeight += rect.height;
-    });
-    const totalLogicalHeight = Math.round(totalVisualHeight / scale);
-
-    const topRow = rowsToCheck[0];
-    const colspan = topRow.children.reduce((sum: number, td: TableCell) => {
-      if (selectedTds.some(s => s === td.domNode)) {
-        sum += ~~td.domNode.getAttribute('colspan') || 1;
+    // Calculer colspan
+    const colspan = row.children.reduce((colspan: number, td: TableCell) => {
+      const tdCorrectBounds = getCorrectBounds(td.domNode, this.quill.container);
+      if (
+        tdCorrectBounds.left >= computeBounds.left &&
+        tdCorrectBounds.right <= computeBounds.right
+      ) {
+        colspan += ~~td.domNode.getAttribute('colspan') || 1;
       }
-      return sum;
+      return colspan;
     }, 0);
 
-    const cellsToRemove: TableCell[] = [];
+    // 🔴 NOUVEAU : Compter les lignes réelles dans la sélection
+    let actualRowCount = 0;
+
+    // Calculer rowspan
+    const rowspan = rows.reduce((rowspan: number, row: TableRow) => {
+      const rowCorrectBounds = getCorrectBounds(row.domNode, this.quill.container);
+      if (
+        rowCorrectBounds.top >= computeBounds.top &&
+        rowCorrectBounds.bottom <= computeBounds.bottom
+      ) {
+        actualRowCount++; // 🔴 NOUVEAU : Compter chaque ligne dans la sélection
+        let minRowspan = Number.MAX_VALUE;
+        row.children.forEach((td: TableCell) => {
+          const rowspan = ~~td.domNode.getAttribute('rowspan') || 1;
+          minRowspan = Math.min(minRowspan, rowspan);
+        });
+        rowspan += minRowspan;
+      }
+      return rowspan;
+    }, 0);
+
+    // Collecter les lignes qui vont être supprimées
+    const deletedRows: Set<TableRow> = new Set();
+    let offset = 0;
+
+    // Fusionner et supprimer les cellules sélectionnées
     for (const td of selectedTds) {
       if (leftTd.isEqualNode(td)) continue;
       const blot = Quill.find(td) as TableCell;
+      const parentRow = blot.parent as TableRow;
+      blot.moveChildren(leftTdBlot);
+      blot.remove();
 
-      let child = blot.children.head;
-      while (child) {
-        const nextChild = child.next;
-        const targetBlock = leftTdBlot.children.tail;
-        if (targetBlock) {
-          child.moveChildren(targetBlock);
-          child.remove();
-        } else {
-          leftTdBlot.appendChild(child);
-        }
-        child = nextChild;
+      if (!blot.parent?.children?.length) {
+        deletedRows.add(parentRow);
+        offset++;
       }
-      cellsToRemove.push(blot);
     }
-    cellsToRemove.forEach(cell => cell.remove());
+
+    // Si des lignes ont été supprimées, ajuster les cellules adjacentes affectées
+    if (offset > 0 && deletedRows.size > 0) {
+      const allCells = tableBlot.descendants(TableCell);
+      const selectedTdSet = new Set(selectedTds.map(td => Quill.find(td)));
+
+      for (const cell of allCells) {
+        if (selectedTdSet.has(cell)) continue;
+
+        const cellRowspan = ~~cell.domNode.getAttribute('rowspan') || 1;
+        if (cellRowspan <= 1) continue;
+
+        const cellRow = cell.parent as TableRow;
+        let currentRow = cellRow;
+        let affectedRowCount = 0;
+
+        for (let i = 0; i < cellRowspan && currentRow; i++) {
+          if (deletedRows.has(currentRow)) {
+            affectedRowCount++;
+          }
+          currentRow = currentRow.next;
+        }
+
+        if (affectedRowCount > 0) {
+          const newRowspan = cellRowspan - affectedRowCount;
+          const [cellFormats] = getCellFormats(cell);
+
+          if (newRowspan >= 1) {
+            cell.replaceWith(cell.statics.blotName, {
+              ...cellFormats,
+              rowspan: newRowspan === 1 ? null : newRowspan
+            });
+          }
+        }
+      }
+    }
 
     leftTdBlot.setChildrenId(cellId);
-    const finalRowspan = initialRowCount;
 
-    // On prépare les formats
-    formats['height'] = `${totalLogicalHeight}px`;
-    let cssStyle = formats['style'] || '';
-    cssStyle = cssStyle.replace(/height\s*:\s*[^;]+;?/gi, '');
-    if (cssStyle && !cssStyle.trim().endsWith(';')) cssStyle += ';';
-    cssStyle += `height: ${totalLogicalHeight}px !important;`;
-    formats['style'] = cssStyle;
-
-    const newCellBlot = leftTdBlot.replaceWith(leftTdBlot.statics.blotName, {
+    // 🔴 NOUVEAU : Stocker le nombre de lignes originales pour permettre un split correct
+    // @ts-expect-error
+    head.format(leftTdBlot.statics.blotName, {
       ...formats,
       colspan,
-      rowspan: finalRowspan
+      rowspan: rowspan - offset,
+      'data-original-rowspan': actualRowCount  // 🔴 NOUVEAU : Mémoriser le nombre de lignes
     });
 
-    const newCellNode = newCellBlot.domNode as HTMLElement;
-    newCellNode.style.height = `${totalLogicalHeight}px`;
-    newCellNode.style.setProperty('height', `${totalLogicalHeight}px`, 'important');
-
-    this.tableBetter.cellSelection.setSelected(newCellNode);
+    this.tableBetter.cellSelection.setSelected(head.parent.domNode);
     this.quill.scrollSelectionIntoView();
   }
 
@@ -977,90 +1013,123 @@ class TableMenus {
     this.root.classList.remove('ql-hidden');
   }
 
+  // Fonction splitCell() COMPLÈTE avec restauration des lignes
+
   splitCell() {
     const { selectedTds } = this.tableBetter.cellSelection;
     const { leftTd } = this.getSelectedTdsInfo();
     const leftTdBlot = Quill.find(leftTd) as TableCell;
     const head = leftTdBlot.children.head;
-    for (const td of selectedTds) {
-      // Lecture correcte des dimensions
-      const computedStyle = getComputedStyle(td);
-      const logicalWidth = parseFloat(computedStyle.width) || td.getBoundingClientRect().width;
-      const { right } = td.getBoundingClientRect();
 
-      const colspan = ~~td.getAttribute('colspan') || 1;
-      const rowspan = ~~td.getAttribute('rowspan') || 1;
-      if (colspan === 1 && rowspan === 1) continue;
-      const columnCells: [TableRow, string, TableCell | null][] = [];
+    for (const td of selectedTds) {
+      const element = td as HTMLElement;
+      const colspan = ~~element.getAttribute('colspan') || 1;
+      const rowspan = ~~element.getAttribute('rowspan') || 1;
+      const originalRowspan = ~~element.getAttribute('data-original-rowspan') || rowspan;
+
+      if (colspan === 1 && rowspan === 1 && originalRowspan === 1) continue;
+
+      const { right } = element.getBoundingClientRect();
       const blot = Quill.find(td) as TableCell;
       const tableBlot = blot.table();
       const nextBlot = blot.next;
       const rowBlot = blot.row();
 
-      if (rowspan > 1) {
-        if (colspan > 1) {
-          let nextRowBlot = rowBlot.next;
-          for (let i = 1; i < rowspan; i++) {
-            const { ref, id } = this.getRefInfo(nextRowBlot, right);
-            for (let j = 0; j < colspan; j++) {
-              columnCells.push([nextRowBlot, id, ref]);
-            }
-            nextRowBlot && (nextRowBlot = nextRowBlot.next);
+      // 1. Calcul des lignes manquantes (Fix structurel)
+      const rowsToCreate = Math.max(0, originalRowspan - rowspan);
+
+      if (rowsToCreate > 0) {
+        let insertAfterRow = rowBlot;
+        // A. Création des lignes
+        for (let i = 0; i < rowsToCreate; i++) {
+          const newRow = this.quill.scroll.create(TableRow.blotName) as TableRow;
+          if (insertAfterRow && insertAfterRow.next) {
+            rowBlot.parent.insertBefore(newRow, insertAfterRow.next);
+          } else {
+            rowBlot.parent.insertBefore(newRow, null);
           }
-        } else {
-          let nextRowBlot = rowBlot.next;
-          for (let i = 1; i < rowspan; i++) {
-            const { ref, id } = this.getRefInfo(nextRowBlot, right);
-            columnCells.push([nextRowBlot, id, ref]);
-            nextRowBlot && (nextRowBlot = nextRowBlot.next);
+          insertAfterRow = newRow;
+        }
+
+        // B. Agrandissement des voisins
+        const allCells = tableBlot.descendants(TableCell);
+        const allRows = tableBlot.descendants(TableRow);
+        const splitRowIndex = allRows.indexOf(rowBlot);
+
+        for (const cell of allCells) {
+          if (cell.domNode === td) continue;
+          const cellRow = cell.parent as TableRow;
+          const cellStart = allRows.indexOf(cellRow);
+          const cellSpan = ~~cell.domNode.getAttribute('rowspan') || 1;
+          const cellEnd = cellStart + cellSpan;
+
+          if (cellStart <= splitRowIndex && cellEnd > splitRowIndex) {
+            const newSpan = cellSpan + rowsToCreate;
+            const blotName = cell.statics.blotName;
+            const currentFormats = cell.formats()[blotName];
+            cell.replaceWith(blotName, { ...currentFormats, rowspan: String(newSpan) });
           }
         }
       }
+
+      // 2. Préparation des styles à copier (Fix visuel)
+      // On récupère les styles de la cellule parente pour que les enfants soient identiques
+      const [originalFormats] = getCellFormats(blot);
+      const inheritedFormats = { ...originalFormats };
+      // On retire les attributs de structure pour ne garder que le style (border, color...)
+      delete inheritedFormats.colspan;
+      delete inheritedFormats.rowspan;
+      delete inheritedFormats.width;
+      delete inheritedFormats.height;
+      delete inheritedFormats['data-original-rowspan'];
+
+      // 3. Préparation de l'insertion
+      const columnCells: [TableRow, string, TableCell | null][] = [];
+
+      if (originalRowspan > 1) {
+        let nextRowBlot = rowBlot.next;
+        const loopCount = (originalRowspan > 1) ? originalRowspan : 1;
+
+        for (let i = 1; i < loopCount; i++) {
+          if (!nextRowBlot) break;
+          const { ref, id } = this.getRefInfo(nextRowBlot, right);
+          const colsToAdd = (colspan > 1) ? colspan : 1;
+          for (let j = 0; j < colsToAdd; j++) {
+            columnCells.push([nextRowBlot, id, ref]);
+          }
+          nextRowBlot = nextRowBlot.next;
+        }
+      }
+
       if (colspan > 1) {
-        const id = td.getAttribute('data-row');
+        const id = element.getAttribute('data-row');
         for (let i = 1; i < colspan; i++) {
           columnCells.push([rowBlot, id, nextBlot]);
         }
       }
 
-      // calcul de la largeur
-      const newCellWidth = Math.floor(logicalWidth / colspan)
-
+      // 4. Insertion et Application des Styles
       for (const [row, id, ref] of columnCells) {
         const newCell = tableBlot.insertColumnCell(row, id, ref);
-        // On applique la nouvele largeur aux nouvelles cellules
-        if (newCell && newCell.domNode) {
-          const el = newCell.domNode as HTMLElement;
-          el.style.width = `${newCellWidth}px`;
-          // Au cas ou c'est en pourcentage
-          if (!newCellWidth.toString().endsWith('%')) {
-            el.setAttribute('width', `${newCellWidth}`);
-          }
+        if (newCell) {
+          // On applique les styles hérités (bordures, etc.) mais SANS largeur forcée
+          newCell.replaceWith(newCell.statics.blotName, {
+            ...inheritedFormats,
+            'data-row': id // On s'assure que l'ID de ligne reste correct
+          });
         }
       }
-      const [formats] = getCellFormats(blot);
 
-      // Nettoyage des styles de fusion (ca va pas être très beau mais tant que ça marche ne nous plaignons pas)
-      if (formats['height']) delete formats['height'];
-      if (formats['rowspan']) delete formats['rowspan'];
-      if (formats['colspan']) delete formats['colspan'];
-
-      // Nettoyage du style inline
-      if (formats['style']) {
-        formats['style'] = formats['style'].replace(/height\s*:\s*[^;]+;?/gi, '');
-      }
-
-      // Gestion du colspan
-      if (colspan > 1) {
-        if (formats['width']) delete formats['width'];
-        if (formats['style']) {
-          formats['style'] = formats['style'].replace(/width\s*:\s*[^;]+;?/gi, '');
-        }
-        formats['width'] = `${newCellWidth}px`
-      }
-
-      blot.replaceWith(blot.statics.blotName, formats);
+      // 5. Reset de la cellule principale avec styles conservés
+      blot.replaceWith(blot.statics.blotName, {
+        ...inheritedFormats, // Conserve les bordures/styles
+        colspan: null,
+        rowspan: null,
+        'data-original-rowspan': null
+        // Pas de 'width' ici non plus, on laisse le <col> gérer
+      });
     }
+
     this.tableBetter.cellSelection.setSelected(head.parent.domNode);
     this.quill.scrollSelectionIntoView();
   }
