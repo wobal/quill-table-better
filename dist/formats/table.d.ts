@@ -121,6 +121,8 @@ declare class TableContainer extends Container {
     static defaultClassName: string;
     static tagName: string;
     children: LinkedList<TableBody | TableTemporary | TableColgroup>;
+    checkMerge(): boolean;
+    optimize(context: any): void;
     colgroup(): TableColgroup;
     deleteColumn(changeTds: [Element, number][], delTds: Element[], deleteTable: () => void, cols?: Element[]): void;
     deleteRow(rows: TableRow[], deleteTable: () => void): void;
@@ -136,7 +138,6 @@ declare class TableContainer extends Container {
     insertRow(index: number, offset: number, isTh?: boolean): void;
     insertTableCell(colspan: number, formats: Props, row: TableRow, isTh?: boolean): void;
     isPercent(): boolean;
-    optimize(context: unknown): void;
     setCellColspan(cell: TableCell, offset: number): void;
     setCellRowspan(parentElement: Element): void;
     private setClassName;

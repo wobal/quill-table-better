@@ -240,27 +240,50 @@ class Table extends Module {
     if (range == null) return;
     if (this.isTable(range)) return;
 
-    //on mesure l'editeur (on remplace le width 100% par la taille de la fenetre wysiwyg)
+    // 1. DÉTECTION DU VOISIN (Pour le confort initial)
+    const [line, offset] = this.quill.getLine(range.index);
+    const prev = line.prev;
+    // Est-ce qu'on est collé à un tableau ?
+    const isAdjacentToTable = offset === 0 && prev && (
+      (prev as any).statics.blotName === 'table-container' ||
+      (prev as any).statics.blotName === TableContainer.blotName ||
+      (prev as any).statics.blotName === TableTemporary.blotName
+    );
+
+    // 2. CRÉATION DU MUR INITIAL
+    // Si on est collé, on met un espace tout de suite
+    const separatorDelta = isAdjacentToTable ? new Delta().insert('\n') : new Delta();
+
+    // 3. PRÉPARATION DU TABLEAU AVEC ID UNIQUE
     const root = this.quill.root;
     const computedStyle = getComputedStyle(root);
-
-    // On récupère la largeur interne (Largeur totale - Paddings)
     const width = root.clientWidth
       - parseFloat(computedStyle.paddingLeft || '0')
       - parseFloat(computedStyle.paddingRight || '0');
 
-    // On applique cette largeur en pixels fixes
+    // GÉNÉRATION DE L'ID UNIQUE
+    // C'est ça qui va permettre à la protection de fonctionner
+    const uniqueId = `tbl-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+
     const style = `width: ${width}px`;
+    const tableAttributes = {
+      style,
+      'data-table-id': uniqueId // <--- L'ID est injecté ici
+    };
+
     const formats = this.quill.getFormat(range.index - 1);
-    const [, offset] = this.quill.getLine(range.index);
     const isExtra = !!formats[TableCellBlock.blotName] || offset !== 0;
-    const _offset = isExtra ? 2 : 1;
+    const _offset = (isExtra ? 2 : 1) + (isAdjacentToTable ? 1 : 0);
     const extraDelta = isExtra ? new Delta().insert('\n') : new Delta();
+
+    // 4. CONSTRUCTION ET INSERTION
     const base = new Delta()
       .retain(range.index)
       .delete(range.length)
+      .concat(separatorDelta)
       .concat(extraDelta)
-      .insert('\n', { [TableTemporary.blotName]: { style } });
+      .insert('\n', { [TableTemporary.blotName]: tableAttributes });
+
     const delta = new Array(rows).fill(0).reduce(memo => {
       const id = tableId();
       return new Array(columns).fill('\n').reduce((memo, text) => {
@@ -273,6 +296,7 @@ class Table extends Module {
         });
       }, memo);
     }, base);
+
     this.quill.updateContents(delta, Quill.sources.USER);
     this.quill.setSelection(range.index + _offset, Quill.sources.SILENT);
     this.showTools();

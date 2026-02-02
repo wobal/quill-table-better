@@ -19,7 +19,7 @@ import {
 
 const Block = Quill.import('blots/block') as typeof BlockBlot;
 const Container = Quill.import('blots/container') as typeof ContainerBlot;
-const TABLE_ATTRIBUTE = ['border', 'cellspacing', 'style', 'data-class'];
+const TABLE_ATTRIBUTE = ['border', 'cellspacing', 'style', 'data-class', 'data-table-id'];
 const STYLE_RULES = ['color', 'border', 'width', 'height'];
 const COL_ATTRIBUTE = ['width'];
 
@@ -426,6 +426,60 @@ class TableContainer extends Container {
 
   children: LinkedList<TableBody | TableTemporary | TableColgroup>;
 
+  checkMerge(): boolean {
+    // Si la fusion de base est impossible, on arrête
+    if (!super.checkMerge()) return false;
+
+    // On récupère le voisin
+    const next = this.next as TableContainer;
+
+    // On compare les IDs
+    const currentId = this.domNode.getAttribute('data-table-id');
+    const nextId = next.domNode.getAttribute('data-table-id');
+
+    // SÉCURITÉ : Si les deux ont un ID et qu'ils sont DIFFÉRENTS
+    // On INTERDIT la fusion. Ils resteront deux blocs distincts.
+    if (currentId && nextId && currentId !== nextId) {
+      return false;
+    }
+
+    // IMPORTANT : Si c'est le même ID (c'est le même tableau), on AUTORISE la fusion
+    // pour que les lignes de votre tableau 3x3 restent ensemble.
+    return true;
+  }
+
+  optimize(context: any) {
+    super.optimize(context);
+
+    // AUTO-SÉPARATION : Si je touche un autre tableau différent, je mets un mur.
+    const next = this.next as any;
+
+    if (
+      next != null &&
+      next.statics.blotName === this.statics.blotName
+    ) {
+      const currentId = this.domNode.getAttribute('data-table-id');
+      const nextId = next.domNode.getAttribute('data-table-id');
+
+      // Si ce sont deux tableaux différents qui se touchent
+      if (currentId && nextId && currentId !== nextId) {
+
+        // On crée un mur (paragraphe vide)
+        // On utilise scroll.create pour être sûr de ne pas planter
+        let newBlock = this.scroll.create('block') as any;
+        if (!newBlock) newBlock = this.scroll.create('paragraph') as any;
+
+        if (newBlock) {
+          const br = this.scroll.create('break');
+          newBlock.appendChild(br);
+
+          // ON FORCE L'INSERTION DU MUR ENTRE LES DEUX
+          this.parent.insertBefore(newBlock, next);
+        }
+      }
+    }
+  }
+
   colgroup() {
     // @ts-expect-error
     const [colgroup] = this.descendant(TableColgroup);
@@ -709,17 +763,19 @@ class TableContainer extends Container {
     return width.endsWith('%');
   }
 
-  optimize(context: unknown) {
-    super.optimize(context);
-    const temporaries = this.descendants(TableTemporary);
-    this.setClassName(temporaries);
-    if (temporaries.length > 1) {
-      temporaries.shift();
-      for (const temporary of temporaries) {
-        temporary.remove();
+  /*
+    optimize(context: unknown) {
+      super.optimize(context);
+      const temporaries = this.descendants(TableTemporary);
+      this.setClassName(temporaries);
+      if (temporaries.length > 1) {
+        temporaries.shift();
+        for (const temporary of temporaries) {
+          temporary.remove();
+        }
       }
     }
-  }
+  */
 
   setCellColspan(cell: TableCell, offset: number) {
     const blotName = cell.statics.blotName;
