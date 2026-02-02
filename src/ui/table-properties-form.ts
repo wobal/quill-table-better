@@ -26,7 +26,8 @@ import {
   isDimensions,
   isValidColor,
   setElementProperty,
-  setElementAttribute
+  setElementAttribute,
+  updateTableWidth as updateTableWidthUtil
 } from '../utils';
 import { ListContainer } from '../formats/list';
 import iro from '@jaames/iro';
@@ -569,143 +570,98 @@ class TablePropertiesForm {
 
   saveCellAction() {
     const { selectedTds } = this.tableMenus.tableBetter.cellSelection;
-    const { quill, table } = this.tableMenus;
-    const tableBlot = Quill.find(table) as TableContainer;
-    const colgroup = tableBlot.colgroup();
-    const isPercent = tableBlot.isPercent();
+    const { table } = this.tableMenus;
+    const attrs = this.getDiffProperties();
+    const align = attrs['text-align'];
+    const newWidth = attrs['width'];
+
+    // Récupération du SCALE (Zoom interne du WYSIWYG)
     const scale = this.tableMenus.tableBetter.scale || 1;
 
-    // 1. Récupération des changements (couleurs, align...)
-    const attrs = this.getDiffProperties();
+    align && delete attrs['text-align'];
+    const newSelectedTds = [];
 
-    // Largeur
-    let currentWidth = this.attrs['width'];
-    if (currentWidth) {
-      // Nettoyage et conversion
-      const rawW = parseFloat(currentWidth);
-      if (!isNaN(rawW)) {
-        // Ajout unité si manquante
-        if (!currentWidth.endsWith('%') && !currentWidth.endsWith('px')) {
-          currentWidth += 'px';
-        }
+    // On récupère les dimensions, mais on va devoir les "dé-scaler"
+    const tableBounds = table.getBoundingClientRect();
 
-        // Calcul pixels pour la limite
-        const isPct = currentWidth.endsWith('%');
-        const pxW = isPct ? (rawW * getCorrectContainerWidth() / 100) : rawW;
+    let widthDiff = 0;
+    let isDiffCalculated = false;
 
-        // APPLICATION DE LA LIMITE
-        if (pxW < MIN_WIDTH) {
-          currentWidth = `${MIN_WIDTH}px`;
-        }
+    let requestedWidth: number | null = null;
 
-        // On force la valeur validée dans attrs
-        attrs['width'] = currentWidth;
-      }
-    }
+    if (newWidth) {
+      const floatW = parseFloat(newWidth);
+      requestedWidth = newWidth.endsWith('%')
+        ? floatW * getCorrectContainerWidth() / 100
+        : floatW;
 
-    // Hauteur
-    let currentHeight = this.attrs['height'];
-    if (currentHeight) {
-      const rawH = parseFloat(currentHeight);
-      if (!isNaN(rawH)) {
-        if (!currentHeight.endsWith('%') && !currentHeight.endsWith('px')) {
-          currentHeight += 'px';
-        }
-        // Limite Hauteur
-        if (rawH < MIN_HEIGHT) {
-          currentHeight = `${MIN_HEIGHT}px`;
-        }
-        attrs['height'] = currentHeight;
-      }
-    }
-
-    if (attrs['width']) {
-      let floatW = parseFloat(attrs['width']);
-      let widthPx =
-        attrs['width']?.endsWith('%')
-          ? floatW * getCorrectContainerWidth() / 100
-          : floatW;
-
-      const tableRect = table.getBoundingClientRect();
-      const currentTableWidth = tableRect.width / scale;
-
-      let totalColsCount = 0;
-      if (colgroup) {
-        totalColsCount = colgroup.domNode.children.length;
-      } else {
-        const firstRow = table.querySelector('tr');
-        if (firstRow) totalColsCount = firstRow.children.length;
+      const MIN_WIDTH = 30;
+      if (requestedWidth < MIN_WIDTH) {
+        requestedWidth = MIN_WIDTH;
+        attrs['width'] = `${MIN_WIDTH}px`;
       }
 
-      // On compte les colonnes sélectionnées
-      const { computeBounds } = this.tableMenus.getSelectedTdsInfo();
-      // On utilise une estimation fiable basée sur la sélection si pas de cols
-      const cols = getComputeSelectedCols(computeBounds, table, quill.container);
-      const selectedColsCount = cols.length > 0 ? cols.length : selectedTds.length; // Fallback approximatif si pas de colgroup
+      const allRows = table.querySelectorAll('tr');
+      for (const row of allRows) {
+        const cells = row.querySelectorAll('td, th');
+        for (const cell of cells) {
+          const isSelected = selectedTds.some(td => td.isEqualNode(cell));
 
-      // 3. Calcul du plafond
-      if (totalColsCount > 0 && selectedColsCount > 0) {
-        const unselectedColsCount = Math.max(0, totalColsCount - selectedColsCount);
+          if (!isSelected) {
+            const cellEl = cell as HTMLElement;
 
-        // On réserve 30px par colonne voisine + 1px de marge de sécurité par colonne
-        const reservedSpace = unselectedColsCount * (MIN_WIDTH + 1);
+            // 1. Largeur Visuelle / Scale
+            const rect = cellEl.getBoundingClientRect();
+            let exactWidth = rect.width / scale;
 
-        // Espace restant pour la sélection
-        const maxAvailableTotal = Math.max(0, currentTableWidth - reservedSpace);
+            // 2. Soustraire Padding/Border (Valeurs CSS pures, donc pas de division par scale)
+            const computed = window.getComputedStyle(cellEl);
+            if (computed.boxSizing === 'content-box') {
+              const pl = parseFloat(computed.paddingLeft) || 0;
+              const pr = parseFloat(computed.paddingRight) || 0;
+              const bl = parseFloat(computed.borderLeftWidth) || 0;
+              const br = parseFloat(computed.borderRightWidth) || 0;
+              exactWidth = exactWidth - pl - pr - bl - br;
+            }
 
-        // Max par colonne sélectionnée
-        const maxPerCol = maxAvailableTotal / selectedColsCount;
+            exactWidth = exactWidth - 0.1;
 
-        // 4. Application du bridage
-        if (widthPx > maxPerCol) {
-          widthPx = Math.floor(maxPerCol);
-          if (widthPx < MIN_WIDTH) widthPx = MIN_WIDTH;
-
-          // Mise à jour de la valeur qui sera utilisée partout
-          if (attrs['width'].endsWith('%')) {
-            const containerW = getCorrectContainerWidth();
-            const newPct = (widthPx / containerW) * 100;
-            attrs['width'] = `${newPct.toFixed(2)}%`;
-          } else {
-            attrs['width'] = `${widthPx}px`;
+            if (exactWidth > 0) {
+              cellEl.style.width = `${exactWidth}px`;
+            }
           }
         }
       }
     }
 
-    const floatW = parseFloat(attrs['width']);
-    const width = attrs['width']?.endsWith('%')
-      ? floatW * getCorrectContainerWidth() / 100
-      : floatW;
-
-    const align = attrs['text-align'];
-    align && delete attrs['text-align'];
-    const newSelectedTds = [];
-
-    if (colgroup && width) {
-      const { operateLine } = this.tableMenus.tableBetter;
-      const { computeBounds } = this.tableMenus.getSelectedTdsInfo();
-      const cols = getComputeSelectedCols(computeBounds, table, quill.container);
-
-      for (const col of cols) {
-        operateLine.setColWidth(col as HTMLElement, `${width}`, isPercent);
-
-        // Sécurité Style
-        if (!isPercent) {
-          (col as HTMLElement).style.width = `${width}px`;
-          (col as HTMLElement).style.minWidth = `${width}px`;
-        }
-      }
-    }
-
     for (const td of selectedTds) {
+      const tdEl = td as HTMLElement;
+
+      if (requestedWidth !== null && !isDiffCalculated) {
+        // --- Calcul du Différentiel pour le Tableau ---
+
+        // 1. Largeur Visuelle / Scale
+        const rect = tdEl.getBoundingClientRect();
+        let currentContentWidth = rect.width / scale;
+
+        // 2. Soustraire Padding/Border
+        const computed = window.getComputedStyle(tdEl);
+        if (computed.boxSizing === 'content-box') {
+          const pl = parseFloat(computed.paddingLeft) || 0;
+          const pr = parseFloat(computed.paddingRight) || 0;
+          const bl = parseFloat(computed.borderLeftWidth) || 0;
+          const br = parseFloat(computed.borderRightWidth) || 0;
+          currentContentWidth = currentContentWidth - pl - pr - bl - br;
+        }
+
+        // 3. Calcul du delta (CSS pur)
+        widthDiff = requestedWidth - currentContentWidth;
+        isDiffCalculated = true;
+      }
+
       const tdBlot = Quill.find(td) as TableCell;
       const blotName = tdBlot.statics.blotName;
       const formats = tdBlot.formats()[blotName];
-
-      if (attrs['width']) formats['width'] = attrs['width'];
-      if (attrs['height']) formats['height'] = attrs['height'];
-
       const style = this.getCellStyle(td, attrs);
 
       if (align) {
@@ -722,28 +678,21 @@ class TablePropertiesForm {
       }
 
       const parent = tdBlot.replaceWith(blotName, { ...formats, style }) as TableCell;
-
-      // INJECTION DOM FORCE
-      const el = parent.domNode as HTMLElement;
-      if (attrs['width']) {
-        el.style.width = attrs['width'];
-        if (!attrs['width'].endsWith('%')) el.style.minWidth = attrs['width'];
-        el.setAttribute('width', attrs['width'].replace('px', ''));
-      }
-      if (attrs['height']) {
-        el.style.height = attrs['height'];
-        el.style.minHeight = attrs['height'];
-        el.setAttribute('height', attrs['height'].replace('px', ''));
-      }
-
       newSelectedTds.push(parent.domNode);
     }
 
     this.tableMenus.tableBetter.cellSelection.setSelectedTds(newSelectedTds);
 
-    // On a SUPPRIMÉ l'appel à updateTableWidth ici.
-    // Cela empêche le tableau de se redimensionner automatiquement (et de rétrécir)
-    // lorsqu'on valide le formulaire. Le tableau garde sa largeur actuelle.
+    // Mise à jour de la largeur du tableau
+    if (Math.abs(widthDiff) > 0.1) {
+      const unscaledBounds = {
+        ...tableBounds,
+        width: tableBounds.width / scale,
+        height: tableBounds.height / scale
+      } as DOMRect;
+
+      updateTableWidthUtil(table, unscaledBounds, widthDiff);
+    }
   }
 
   saveTableAction() {

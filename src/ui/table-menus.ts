@@ -902,7 +902,7 @@ class TableMenus {
         rowCorrectBounds.top >= computeBounds.top &&
         rowCorrectBounds.bottom <= computeBounds.bottom
       ) {
-        actualRowCount++; // 🔴 NOUVEAU : Compter chaque ligne dans la sélection
+        actualRowCount++; // Compter chaque ligne dans la sélection
         let minRowspan = Number.MAX_VALUE;
         row.children.forEach((td: TableCell) => {
           const rowspan = ~~td.domNode.getAttribute('rowspan') || 1;
@@ -969,13 +969,13 @@ class TableMenus {
 
     leftTdBlot.setChildrenId(cellId);
 
-    // 🔴 NOUVEAU : Stocker le nombre de lignes originales pour permettre un split correct
+    // Stocker le nombre de lignes originales pour permettre un split correct
     // @ts-expect-error
     head.format(leftTdBlot.statics.blotName, {
       ...formats,
       colspan,
       rowspan: rowspan - offset,
-      'data-original-rowspan': actualRowCount  // 🔴 NOUVEAU : Mémoriser le nombre de lignes
+      'data-original-rowspan': actualRowCount  // Mémoriser le nombre de lignes
     });
 
     this.tableBetter.cellSelection.setSelected(head.parent.domNode);
@@ -1013,7 +1013,6 @@ class TableMenus {
     this.root.classList.remove('ql-hidden');
   }
 
-  // Fonction splitCell() COMPLÈTE avec restauration des lignes
 
   splitCell() {
     const { selectedTds } = this.tableBetter.cellSelection;
@@ -1035,7 +1034,7 @@ class TableMenus {
       const nextBlot = blot.next;
       const rowBlot = blot.row();
 
-      // 1. Calcul des lignes manquantes (Fix structurel)
+      // 1. Calcul des lignes manquantes 
       const rowsToCreate = Math.max(0, originalRowspan - rowspan);
 
       if (rowsToCreate > 0) {
@@ -1072,7 +1071,7 @@ class TableMenus {
         }
       }
 
-      // 2. Préparation des styles à copier (Fix visuel)
+      // 2. Préparation des styles à copier 
       // On récupère les styles de la cellule parente pour que les enfants soient identiques
       const [originalFormats] = getCellFormats(blot);
       const inheritedFormats = { ...originalFormats };
@@ -1126,7 +1125,6 @@ class TableMenus {
         colspan: null,
         rowspan: null,
         'data-original-rowspan': null
-        // Pas de 'width' ici non plus, on laisse le <col> gérer
       });
     }
 
