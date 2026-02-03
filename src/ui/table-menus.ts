@@ -892,7 +892,6 @@ class TableMenus {
       return colspan;
     }, 0);
 
-    // 🔴 NOUVEAU : Compter les lignes réelles dans la sélection
     let actualRowCount = 0;
 
     // Calculer rowspan
@@ -968,6 +967,16 @@ class TableMenus {
     }
 
     leftTdBlot.setChildrenId(cellId);
+
+    const finalRowspan = rowspan - offset;
+
+    if (finalRowspan > 1) {
+      delete formats['height'];
+      if (formats['style']) {
+        // Supprime proprement "height: ...;" dans la chaîne de style
+        formats['style'] = formats['style'].replace(/height\s*:\s*[^;]+;?/gi, '');
+      }
+    }
 
     // Stocker le nombre de lignes originales pour permettre un split correct
     // @ts-expect-error
