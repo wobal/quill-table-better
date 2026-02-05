@@ -207,16 +207,15 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
         const scale = this.tableBetter.scale || 1;
 
         // Valeur visuelle pour éviter d'autres valeurs impossibles sur width/height
-        if (styles.width && !styles.width.endsWith('%')) {
+        if (!styles.width || !styles.width.endsWith('%')) {
           const rect = this.table.getBoundingClientRect();
-          styles.width = `${Math.round(rect.width / scale)}px`;
+          styles.width = `${(rect.width / scale)}px`;
         }
 
-        if (styles.height && !styles.height.endsWith('%')) {
+        if (!styles.height || !styles.height.endsWith('%')) {
           const rect = this.table.getBoundingClientRect();
-          styles.height = `${Math.round(rect.height / scale)}px`
+          styles.height = `${(rect.height / scale)}px`
         }
-
 
         const attribute = {
           ...styles,
@@ -730,6 +729,19 @@ class TableMenus {
       align
         ? { ...getElementStyle(td, CELL_PROPERTIES), 'text-align': align }
         : getElementStyle(td, CELL_PROPERTIES);
+
+    // --- AJOUT : Force la lecture de la valeur visuelle réelle ---
+    // Pour que le gestionnaire affiche toujours la bonne taille
+    const scale = this.tableBetter.scale || 1;
+    const rect = td.getBoundingClientRect();
+
+    if (!attr.width || !attr.width.endsWith('%')) {
+      attr.width = `${(rect.width / scale)}px`;
+    }
+    if (!attr.height || !attr.height.endsWith('%')) {
+      attr.height = `${(rect.height / scale)}px`;
+    }
+
     return attr;
   }
 

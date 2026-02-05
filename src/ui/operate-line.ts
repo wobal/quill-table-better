@@ -114,8 +114,6 @@ class OperateLine {
     const row = cell.parentElement;
     // @ts-ignore
     if (!row || row.tagName !== 'TR') return 0;
-
-    console.log("22/01/2026 09:54:37")
     const table = row.closest('table') as HTMLTableElement;
     if (!table) return 0;
 
@@ -361,12 +359,11 @@ class OperateLine {
     let bounds = tableBlot.domNode.getBoundingClientRect();
 
     const applyWidth = (node: Element, logicalW: number) => {
-      const w = Math.round(logicalW);
+      const w = logicalW;
       setElementAttribute(node, { width: String(w) });
       const sWidth = isPercent ? getCorrectWidth(w, isPercent) : `${w}px`;
       setElementProperty(node as HTMLElement, { width: sWidth });
 
-      // On synchro width et min-width pour forcer le respect de la taille par le navigateur et eviter des bugs avec les border
       if (!isPercent) {
         (node as HTMLElement).style.setProperty('width', sWidth, 'important');
         (node as HTMLElement).style.removeProperty('min-width');
@@ -379,20 +376,24 @@ class OperateLine {
       const { left: colLeft } = col.domNode.getBoundingClientRect();
 
       if (!nextCol) {
-        let newW = Math.round((clientX - colLeft) / scale);
+        let newW = (clientX - colLeft) / scale;
         if (newW < MIN_WIDTH) newW = MIN_WIDTH;
 
-        let currentAttrW = parseInt(col.domNode.getAttribute('width'));
-        let oldW = !isNaN(currentAttrW) ? currentAttrW : Math.round(col.domNode.getBoundingClientRect().width / scale);
-        let diff = newW - oldW;
+        // FIX: Priorité au visuel pour le calcul du diff (empêche le "Shift")
+        let currentRectW = col.domNode.getBoundingClientRect().width / scale;
+        let diff = newW - currentRectW;
 
-        if (diff !== 0) {
+        if (Math.abs(diff) > 0.5) {
           applyWidth(col.domNode, newW);
           bounds.width = bounds.width / scale;
           const tableNode = tableBlot.domNode;
           const newTotalW = bounds.width + diff;
           updateTableWidth(tableNode, bounds, diff);
           tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
+
+          if (!isPercent) {
+            tableNode.style.setProperty('width', `${newTotalW}px`, 'important');
+          }
         }
         return;
       }
@@ -400,9 +401,9 @@ class OperateLine {
       const rectB = nextCol.domNode.getBoundingClientRect();
       const w1Visual = col.domNode.getBoundingClientRect().width;
       const w2Visual = rectB.width;
-      const totalLogical = Math.round((w1Visual + w2Visual) / scale);
+      const totalLogical = (w1Visual + w2Visual) / scale;
 
-      let newW1 = Math.round((clientX - colLeft) / scale);
+      let newW1 = (clientX - colLeft) / scale;
 
       if (newW1 < MIN_WIDTH) newW1 = MIN_WIDTH;
       if (newW1 > totalLogical - MIN_WIDTH) newW1 = totalLogical - MIN_WIDTH;
@@ -416,50 +417,48 @@ class OperateLine {
       const tableNode = tableBlot.domNode as HTMLTableElement;
       const maxCols = this.getMaxColNum(cell);
       const cellEndIndex = this.getLevelColSum(cell);
-
-      // On vérifie via l'algo intelligent si c'est la bordure de FIN de tableau
       const isLastVisualColumn = cellEndIndex >= maxCols;
 
       if (isLastVisualColumn) {
-        // Redimensionnement de la table entière
         const { left: colLeft } = cell.getBoundingClientRect();
-        let newW = Math.round((clientX - colLeft) / scale);
+        let newW = (clientX - colLeft) / scale;
         if (newW < MIN_WIDTH) newW = MIN_WIDTH;
 
         const firstCell = cell;
-        let currentAttrW = parseInt(firstCell.getAttribute('width'));
-        let oldW = !isNaN(currentAttrW) ? currentAttrW : Math.round(firstCell.getBoundingClientRect().width / scale);
-        let diff = newW - oldW;
+        // FIX: Priorité au visuel pour le calcul du diff
+        let currentRectW = firstCell.getBoundingClientRect().width / scale;
+        let diff = newW - currentRectW;
 
-        bounds.width = bounds.width / scale;
-        const newTotalW = bounds.width + diff;
-        updateTableWidth(tableNode, bounds, diff);
-        tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
+        if (Math.abs(diff) > 0.5) {
+          bounds.width = bounds.width / scale;
+          const newTotalW = bounds.width + diff;
+          updateTableWidth(tableNode, bounds, diff);
+          tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
+          if (!isPercent) {
+            tableNode.style.setProperty('width', `${newTotalW}px`, 'important');
+          }
 
-        // Cast en HTMLTableElement pour avoir .rows
-        const rows = Array.from(tableNode.rows);
-        const blockedUntil: number[] = [];
-
-        for (let r = 0; r < rows.length; r++) {
-          const row = rows[r];
-          const cells = Array.from(row.children) as Element[];
-          let c = 0;
-          let colIdx = 0;
-          while (c < cells.length) {
-            while (blockedUntil[colIdx] > r) colIdx++;
-            const currentCell = cells[c];
-            const colspan = parseInt(currentCell.getAttribute('colspan')) || 1;
-            const rowspan = parseInt(currentCell.getAttribute('rowspan')) || 1;
-            if (rowspan > 1) {
-              for (let k = 0; k < colspan; k++) blockedUntil[colIdx + k] = r + rowspan;
+          const rows = Array.from(tableNode.rows);
+          const blockedUntil: number[] = [];
+          for (let r = 0; r < rows.length; r++) {
+            const row = rows[r];
+            const cells = Array.from(row.children) as Element[];
+            let c = 0;
+            let colIdx = 0;
+            while (c < cells.length) {
+              while (blockedUntil[colIdx] > r) colIdx++;
+              const currentCell = cells[c];
+              const colspan = parseInt(currentCell.getAttribute('colspan')) || 1;
+              const rowspan = parseInt(currentCell.getAttribute('rowspan')) || 1;
+              if (rowspan > 1) {
+                for (let k = 0; k < colspan; k++) blockedUntil[colIdx + k] = r + rowspan;
+              }
+              if (colIdx + colspan >= maxCols) {
+                applyWidth(currentCell, newW);
+              }
+              colIdx += colspan;
+              c++;
             }
-
-            // Identification des voisins autour de la bordure bougée
-            if (colIdx + colspan >= maxCols) {
-              applyWidth(currentCell, newW);
-            }
-            colIdx += colspan;
-            c++;
           }
         }
       }
@@ -472,7 +471,6 @@ class OperateLine {
           const cells = Array.from(row.children) as Element[];
           let c = 0;
           let colIdx = 0;
-
           let leftCell: Element | null = null;
           let rightCell: Element | null = null;
 
@@ -484,14 +482,8 @@ class OperateLine {
             if (rowspan > 1) {
               for (let k = 0; k < colspan; k++) blockedUntil[colIdx + k] = r + rowspan;
             }
-
-            if (colIdx + colspan === colSum) {
-              leftCell = currentCell;
-            }
-            if (colIdx === colSum) {
-              rightCell = currentCell;
-            }
-
+            if (colIdx + colspan === colSum) leftCell = currentCell;
+            if (colIdx === colSum) rightCell = currentCell;
             colIdx += colspan;
             c++;
           }
@@ -500,12 +492,11 @@ class OperateLine {
             const { left: cLeft, width: w1V } = leftCell.getBoundingClientRect();
             const { width: w2V } = rightCell.getBoundingClientRect();
 
-            const totalLogical = Math.round((w1V + w2V) / scale);
-            let newW1 = Math.round((clientX - cLeft) / scale);
+            const totalLogical = (w1V + w2V) / scale;
+            let newW1 = (clientX - cLeft) / scale;
 
             if (newW1 < MIN_WIDTH) newW1 = MIN_WIDTH;
             if (newW1 > totalLogical - MIN_WIDTH) newW1 = totalLogical - MIN_WIDTH;
-
             let newW2 = totalLogical - newW1;
 
             applyWidth(leftCell, newW1);
@@ -513,7 +504,7 @@ class OperateLine {
           }
           else if (leftCell && !rightCell) {
             const { left: cLeft } = leftCell.getBoundingClientRect();
-            let newW = Math.round((clientX - cLeft) / scale);
+            let newW = (clientX - cLeft) / scale;
             if (newW < MIN_WIDTH) newW = MIN_WIDTH;
             applyWidth(leftCell, newW);
           }
@@ -680,10 +671,9 @@ class OperateLine {
   updateCell(node: Element) {
     if (!node) return;
     const isLine = this.isLine(node);
-    const scale = this.tableBetter.scale; // je le garde au cas ou j'en au besoin
+
     const handleDrag = (e: MouseEvent) => {
       e.preventDefault();
-
       if (this.drag) {
         if (isLine) {
           this.updateDragLine(e.clientX, e.clientY);
@@ -712,14 +702,42 @@ class OperateLine {
         this.hideDragTable();
       }
 
-
-
-      // Une fois le drag fini, on repose le filet de sécurité via un setTimeout
+      // FIX ULTIME : SYNCHRONISATION FORCEE DU VISUEL VERS L'ATTRIBUT
+      // Ceci garantit que le gestionnaire affichera toujours la valeur réelle
       setTimeout(() => {
         if (tableNode) {
-          const colsCount = this.getMaxColNum(cellNode);
-          const safeMinW = colsCount * MIN_WIDTH;
-          tableNode.style.setProperty('min-width', `${safeMinW}px`, 'important');
+          const scale = this.tableBetter.scale || 1;
+
+          // 1. Sync Table Width
+          const tableRect = tableNode.getBoundingClientRect();
+          const tableW = tableRect.width / scale;
+          tableNode.setAttribute('width', String(tableW));
+          tableNode.style.width = `${tableW}px`;
+          tableNode.style.minWidth = `${tableW}px`;
+
+          // 2. Sync Columns Width
+          const tableBlot = (Quill.find(cellNode) as TableCell).table();
+          const colgroup = tableBlot.colgroup();
+
+          if (colgroup) {
+            let col = colgroup.children.head;
+            while (col) {
+              const colNode = col.domNode;
+              const w = colNode.getBoundingClientRect().width / scale;
+              colNode.setAttribute('width', String(w));
+              colNode.style.width = `${w}px`;
+              col = col.next;
+            }
+          } else {
+            const firstRow = tableNode.querySelector('tr');
+            if (firstRow) {
+              Array.from(firstRow.children).forEach((cell: HTMLElement) => {
+                const w = cell.getBoundingClientRect().width / scale;
+                cell.setAttribute('width', String(w));
+                cell.style.width = `${w}px`;
+              });
+            }
+          }
         }
       }, 0);
 
@@ -733,7 +751,6 @@ class OperateLine {
       e.preventDefault();
       const { tableNode } = this.options;
 
-      // On retire le min-width au clic pour permettre le rétrécissement
       if (tableNode) {
         tableNode.style.removeProperty('min-width');
       }
