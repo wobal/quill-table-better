@@ -202,13 +202,12 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
       icon: tableIcon,
       handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
         const styles = getElementStyle(this.table, TABLE_PROPERTIES)
-
-        // On récupère le scale pour les conversions
         const scale = this.tableBetter.scale || 1;
 
-        // Valeur visuelle pour éviter d'autres valeurs impossibles sur width/height
+        // Si ce n'est pas un pourcentage, on prend la taille affichée exacte.
         if (!styles.width || !styles.width.endsWith('%')) {
           const rect = this.table.getBoundingClientRect();
+          // On utilise toFixed(2) ou la valeur brute pour éviter les erreurs d'arrondi (Shift)
           styles.width = `${(rect.width / scale)}px`;
         }
 

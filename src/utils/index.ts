@@ -396,6 +396,10 @@ function updateTableWidth(
   if (isPercent && !change) return;
   const colgroup = tableBlot.colgroup();
   const temporary = tableBlot.temporary();
+  if (temporary && temporary.domNode) {
+    temporary.domNode.style.removeProperty('min-width');
+    temporary.domNode.style.setProperty('min-width', '0px', 'important');
+  }
   if (colgroup) {
     if (isPercent) {
       let _width = 0;

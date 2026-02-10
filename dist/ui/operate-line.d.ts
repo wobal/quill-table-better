@@ -29,6 +29,10 @@ declare class OperateLine {
         height: string;
         display: string;
     };
+    /**
+     * Calcule l'index visuel de la colonne (en prenant en compte les colspan/rowspan).
+     * C'est essentiel pour savoir quelle bordure on touche dans un tableau.
+     */
     getLevelColSum(cell: Element): number;
     getMaxColNum(cell: Element): number;
     getProperty(options: Options): {

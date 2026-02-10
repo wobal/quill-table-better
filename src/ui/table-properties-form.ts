@@ -571,6 +571,18 @@ class TablePropertiesForm {
   saveCellAction() {
     const { selectedTds } = this.tableMenus.tableBetter.cellSelection;
     const { table } = this.tableMenus;
+
+    // On supprime le min-width du tableau et de son attribut HTML
+    table.style.removeProperty('min-width');
+    table.style.minWidth = '0px';
+    table.removeAttribute('width');
+
+    // On supprime le min-width du PARENT (.ql-table-temporary)
+    if (table.parentElement) {
+      table.parentElement.style.removeProperty('min-width');
+      table.parentElement.style.minWidth = '0px';
+    }
+
     const attrs = this.getDiffProperties();
     const align = attrs['text-align'];
     const newWidth = attrs['width'];
@@ -610,6 +622,9 @@ class TablePropertiesForm {
           if (!isSelected) {
             const cellEl = cell as HTMLElement;
 
+            // Nettoyage cellule non-sélectionnée
+            cellEl.style.removeProperty('min-width');
+
             // 1. Largeur Visuelle / Scale
             const rect = cellEl.getBoundingClientRect();
             let exactWidth = rect.width / scale;
@@ -637,8 +652,10 @@ class TablePropertiesForm {
     for (const td of selectedTds) {
       const tdEl = td as HTMLElement;
 
+      // Nettoyage cellule sélectionnée
+      tdEl.style.removeProperty('min-width');
+
       if (requestedWidth !== null && !isDiffCalculated) {
-        // --- Calcul du Différentiel pour le Tableau ---
 
         // 1. Largeur Visuelle / Scale
         const rect = tdEl.getBoundingClientRect();
@@ -692,6 +709,15 @@ class TablePropertiesForm {
       } as DOMRect;
 
       updateTableWidthUtil(table, unscaledBounds, widthDiff);
+
+
+      table.style.removeProperty('min-width');
+      table.style.minWidth = '0px';
+
+      if (table.parentElement) {
+        table.parentElement.style.removeProperty('min-width');
+        table.parentElement.style.minWidth = '0px';
+      }
     }
   }
 
