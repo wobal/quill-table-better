@@ -740,12 +740,26 @@ class OperateLine {
               col = col.next;
             }
           } else {
-            const firstRow = tableNode.querySelector('tr');
+            const rows = Array.from((tableNode as HTMLTableElement).rows);
+            const firstRow = rows[0];
+
             if (firstRow) {
+              // 1. On capture la "Vérité" sur la première ligne
+              const referenceWidths: number[] = [];
               Array.from(firstRow.children).forEach((cell: HTMLElement) => {
                 const w = Math.round(cell.getBoundingClientRect().width / scale);
-                cell.setAttribute('width', String(w));
-                cell.style.width = `${w}px`;
+                referenceWidths.push(w);
+              });
+
+              // 2. On l'applique à TOUTES les lignes pour éliminer les décimales partout
+              rows.forEach(row => {
+                Array.from(row.children).forEach((cell: HTMLElement, index) => {
+                  if (referenceWidths[index] !== undefined) {
+                    const w = referenceWidths[index];
+                    cell.setAttribute('width', String(w));
+                    cell.style.width = `${w}px`;
+                  }
+                });
               });
             }
           }
@@ -758,7 +772,6 @@ class OperateLine {
       this.tableBetter.tableMenus.updateMenus(tableNode);
     }
 
-    // --- LE FIX DU DÉCALAGE (SNAPSHOT) ---
     const handleMousedown = (e: MouseEvent) => {
       e.preventDefault();
       const { tableNode, cellNode } = this.options;
@@ -789,7 +802,6 @@ class OperateLine {
           }
         }
         else if (firstRow) {
-          // C'est ici qu'on règle le conflit de calcul
           // On capture les largeurs de la PREMIÈRE ligne (Row 0)
           const referenceWidths: number[] = [];
           Array.from(firstRow.children).forEach((cell: HTMLElement) => {
