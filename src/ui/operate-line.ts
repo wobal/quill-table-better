@@ -499,18 +499,30 @@ class OperateLine {
             let newW1, newW2;
 
             if (masterWidths === null) {
+              // --- 1. RÉCUPÉRATION DES COLSPANS ---
+              const leftColspan = parseInt(leftCell.getAttribute('colspan')) || 1;
+              const rightColspan = parseInt(rightCell.getAttribute('colspan')) || 1;
+
+              // --- 2. CALCUL DES MINIMUMS DYNAMIQUES ---
+              const dynamicMinW1 = MIN_WIDTH * leftColspan;
+              const dynamicMinW2 = MIN_WIDTH * rightColspan;
+
               const { left: cLeft, width: w1V } = leftCell.getBoundingClientRect();
               const { width: w2V } = rightCell.getBoundingClientRect();
 
-              const totalLogical = (w1V + w2V) / scale;
-              newW1 = (clientX - cLeft) / scale;
+              // (Avec les Math.round pour garder l'alignement strict)
+              const totalLogical = Math.round((w1V + w2V) / scale);
+              let rawW1 = (clientX - cLeft) / scale;
+              newW1 = Math.round(rawW1);
 
-              if (newW1 < MIN_WIDTH) newW1 = MIN_WIDTH;
-              if (newW1 > totalLogical - MIN_WIDTH) newW1 = totalLogical - MIN_WIDTH;
+              // --- 3. APPLICATION DES LIMITES DYNAMIQUES ---
+              if (newW1 < dynamicMinW1) newW1 = dynamicMinW1;
+              if (newW1 > totalLogical - dynamicMinW2) newW1 = totalLogical - dynamicMinW2;
+
               newW2 = totalLogical - newW1;
 
               masterWidths = { w1: newW1, w2: newW2 };
-              console.log(`   🔑 MASTER DÉFINI (Ligne ${r}): G=${newW1.toFixed(3)} | D=${newW2.toFixed(3)}`);
+              console.log(`   🔑 MASTER DÉFINI (Ligne ${r}): G=${newW1} | D=${newW2}`);
             } else {
               newW1 = masterWidths.w1;
               newW2 = masterWidths.w2;
@@ -520,9 +532,15 @@ class OperateLine {
             applyWidth(rightCell, newW2, `R${r}-D`);
           }
           else if (leftCell && !rightCell) {
+            // --- FIX AUSSI ICI (Au cas où) ---
+            const leftColspan = parseInt(leftCell.getAttribute('colspan')) || 1;
+            const dynamicMinW = MIN_WIDTH * leftColspan;
+
             const { left: cLeft } = leftCell.getBoundingClientRect();
-            let newW = (clientX - cLeft) / scale;
-            if (newW < MIN_WIDTH) newW = MIN_WIDTH;
+            let newW = Math.round((clientX - cLeft) / scale);
+
+            if (newW < dynamicMinW) newW = dynamicMinW;
+
             applyWidth(leftCell, newW, `R${r}-U`);
           }
         }
@@ -586,14 +604,24 @@ class OperateLine {
       }
     } else {
       // Tableau sans colgroup
-      for (const [node, width, height] of preNodes) {
-        const correctWidth = getCorrectWidth(Math.round(width), isPercent);
-        // Conversion en px logique
-        let cWidth = Math.round(width / scale);
-        let cHeight = Math.round(height / scale);
+      let colIdx = 0;
+      for (const [node, targetW, targetH] of preNodes) {
+        // 1. On récupère le colspan de la cellule actuelle
+        const colspan = parseInt(node.getAttribute('colspan')) || 1;
 
-        if (cWidth < MIN_WIDTH) cWidth = MIN_WIDTH;
+        // 2. On calcule le MIN_WIDTH dynamique !
+        const dynamicMinWidth = MIN_WIDTH * colspan;
+
+        let cWidth = Math.round(targetW / scale);
+        let cHeight = Math.round(targetH / scale);
+
+        let cappedW = cWidth;
+
+        // 3. On utilise le minimum dynamique ici
+        if (cWidth < dynamicMinWidth) cappedW = dynamicMinWidth;
         if (cHeight < MIN_HEIGHT) cHeight = MIN_HEIGHT;
+
+        cWidth = cappedW;
 
         const sWidth = isPercent ? getCorrectWidth(cWidth, isPercent) : `${cWidth}px`;
         const sHeight = `${cHeight}px`;
@@ -606,6 +634,7 @@ class OperateLine {
           el.style.setProperty('width', sWidth, 'important');
           el.style.removeProperty('min-width');
         }
+        colIdx++;
       }
     }
 
