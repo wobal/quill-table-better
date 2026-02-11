@@ -545,6 +545,7 @@ class OperateLine {
     const maxColNum = this.getMaxColNum(cell);
     const averageX = changeX / maxColNum;
     const averageY = changeY / rows.length;
+    // on remplace Element, string, string par number pour pouvoir faire le calcul de pixel pour le "preNodes.push"
     const preNodes: [Element, number, number][] = [];
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const isPercent = tableBlot.isPercent();
@@ -560,17 +561,23 @@ class OperateLine {
       }
     }
 
+    // Conversion en pixels logique
     if (colgroup) {
       let col = colgroup.children.head;
+
+      // Nouveau calcul pour les hauteurs
       for (const [node, , height] of preNodes) {
+        // Division par le scale 
         let cHeight = Math.round(height / scale);
         if (cHeight < MIN_HEIGHT) cHeight = MIN_HEIGHT;
 
         setElementAttribute(node, { height: String(cHeight) });
         setElementProperty(node as HTMLElement, { height: `${cHeight}px` });
       }
+      // Maj des largeurs
       while (col) {
         let { width } = col.domNode.getBoundingClientRect();
+        // On ajoute la part de changement (averageX) au width écran, puis on scale
         let newColWidth = Math.round((width + averageX) / scale);
         if (newColWidth < MIN_WIDTH) newColWidth = MIN_WIDTH;
 
@@ -578,8 +585,10 @@ class OperateLine {
         col = col.next;
       }
     } else {
+      // Tableau sans colgroup
       for (const [node, width, height] of preNodes) {
-        // ARRONDI JS ICI
+        const correctWidth = getCorrectWidth(Math.round(width), isPercent);
+        // Conversion en px logique
         let cWidth = Math.round(width / scale);
         let cHeight = Math.round(height / scale);
 
@@ -600,15 +609,16 @@ class OperateLine {
       }
     }
 
-    // ARRONDI TOTAL TABLEAU
+    // Maj de la largeur totale du tableau
+    // On convertit le changement X en logique pour l'appliquer à la largeur actuelle
     const logicalChangeX = Math.round(changeX / scale);
-    const currentTableWidth = Math.round(bounds.width / scale);
 
-    // On met à jour l'objet bounds pour qu'il soit propre
-    const logicalBounds = { ...bounds, width: currentTableWidth * scale };
+    // On récupère la largeur logique actuelle via style ou attribut pour éviter les erreurs de scale inverse
+    const currentTableWidth = Math.round(bounds.width / scale);
+    const logicalBounds = { ...bounds, width: currentTableWidth };
 
     const tableNode = tableBlot.domNode;
-    const newTotalW = Math.round(currentTableWidth + logicalChangeX);
+    const newTotalW = currentTableWidth + logicalChangeX;
 
     updateTableWidth(tableNode, logicalBounds, logicalChangeX);
     tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
