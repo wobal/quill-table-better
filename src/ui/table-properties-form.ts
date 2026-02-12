@@ -586,6 +586,7 @@ class TablePropertiesForm {
     const attrs = this.getDiffProperties();
     const align = attrs['text-align'];
     const newWidth = attrs['width'];
+    const newHeight = attrs['height']; // On récupère la nouvelle hauteur
 
     // Récupération du SCALE (Zoom interne du WYSIWYG)
     const scale = this.tableMenus.tableBetter.scale || 1;
@@ -645,6 +646,39 @@ class TablePropertiesForm {
               cellEl.style.width = `${exactWidth}px`;
             }
           }
+        }
+      }
+    }
+
+    if (newHeight) {
+      const processedRows = new Set<HTMLElement>();
+
+      for (const td of selectedTds) {
+        const row = td.parentElement as HTMLElement;
+
+        // On traite chaque ligne une seule fois
+        if (row && row.tagName === 'TR' && !processedRows.has(row)) {
+
+          // On force la nouvelle hauteur sur la LIGNE (TR)
+          row.style.setProperty('height', newHeight, 'important');
+          // On enlève le min-height qui pourrait bloquer la réduction
+          row.style.removeProperty('min-height');
+
+          if (!newHeight.endsWith('%')) {
+            row.setAttribute('height', newHeight.replace('px', ''));
+          }
+
+          //  On force toutes les cellules de la ligne à la nouvelle taille
+          Array.from(row.children).forEach((cell: HTMLElement) => {
+            cell.style.setProperty('height', newHeight, 'important');
+            cell.style.removeProperty('min-height');
+
+            if (!newHeight.endsWith('%')) {
+              cell.setAttribute('height', newHeight.replace('px', ''));
+            }
+          });
+
+          processedRows.add(row);
         }
       }
     }

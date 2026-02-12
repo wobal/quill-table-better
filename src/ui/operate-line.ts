@@ -499,11 +499,11 @@ class OperateLine {
             let newW1, newW2;
 
             if (masterWidths === null) {
-              // --- 1. RÉCUPÉRATION DES COLSPANS ---
+              // récupération colspans
               const leftColspan = parseInt(leftCell.getAttribute('colspan')) || 1;
               const rightColspan = parseInt(rightCell.getAttribute('colspan')) || 1;
 
-              // --- 2. CALCUL DES MINIMUMS DYNAMIQUES ---
+              // calcul de la valeur minimale
               const dynamicMinW1 = MIN_WIDTH * leftColspan;
               const dynamicMinW2 = MIN_WIDTH * rightColspan;
 
@@ -515,7 +515,7 @@ class OperateLine {
               let rawW1 = (clientX - cLeft) / scale;
               newW1 = Math.round(rawW1);
 
-              // --- 3. APPLICATION DES LIMITES DYNAMIQUES ---
+              // Application valeur minimale
               if (newW1 < dynamicMinW1) newW1 = dynamicMinW1;
               if (newW1 > totalLogical - dynamicMinW2) newW1 = totalLogical - dynamicMinW2;
 
@@ -532,7 +532,6 @@ class OperateLine {
             applyWidth(rightCell, newW2, `R${r}-D`);
           }
           else if (leftCell && !rightCell) {
-            // --- FIX AUSSI ICI (Au cas où) ---
             const leftColspan = parseInt(leftCell.getAttribute('colspan')) || 1;
             const dynamicMinW = MIN_WIDTH * leftColspan;
 
