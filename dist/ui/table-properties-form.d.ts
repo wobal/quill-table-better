@@ -23,6 +23,11 @@ interface Options {
     type: string;
     attribute: Props;
 }
+/** (Thomas --> Je rajoute du commentaire pour moi et pour les devs pour que ça aide)
+ * Classe principale gérant le formulaire flottant de propriétés (Tableau & Cellules).
+ * Gère la création de l'interface, la sélection des couleurs et l'application
+ * des styles complexes (redimensionnement intelligent, gestion des lignes, etc.).
+ */
 declare class TablePropertiesForm {
     tableMenus: TableMenus;
     options: Options;
@@ -67,7 +72,15 @@ declare class TablePropertiesForm {
     hiddenSelectList(element: HTMLElement): void;
     removePropertiesForm(): void;
     saveAction(type: string): void;
+    /**
+     * Logique de sauvegarde des propriétés des cellules.
+     * Gère particulièrement les conflits avec le Drag&Drop manuel en forçant les styles.
+     */
     saveCellAction(): void;
+    /**
+     * Logique de sauvegarde des propriétés globales du tableau.
+     * Utilise un RATIO de redimensionnement pour permettre la réduction du tableau
+     */
     saveTableAction(): void;
     setAttribute(propertyName: string, value: string, container?: HTMLElement): void;
     setBorderDisabled(): void;

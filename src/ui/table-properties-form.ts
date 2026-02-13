@@ -91,6 +91,11 @@ const COLOR_LIST: ColorList[] = [
   { value: '#800080', describe: 'purple' }
 ];
 
+/** (Thomas --> Je rajoute du commentaire pour moi et pour les devs pour que ça aide)
+ * Classe principale gérant le formulaire flottant de propriétés (Tableau & Cellules).
+ * Gère la création de l'interface, la sélection des couleurs et l'application
+ * des styles complexes (redimensionnement intelligent, gestion des lignes, etc.).
+ */
 class TablePropertiesForm {
   tableMenus: TableMenus;
   options: Options;
@@ -557,6 +562,7 @@ class TablePropertiesForm {
     this.borderForm = [];
   }
 
+  // Sauvegarde selon le type Table/Cellule
   saveAction(type: string) {
     switch (type) {
       case 'table':
@@ -568,6 +574,10 @@ class TablePropertiesForm {
     }
   }
 
+  /**
+   * Logique de sauvegarde des propriétés des cellules.
+   * Gère particulièrement les conflits avec le Drag&Drop manuel en forçant les styles.
+   */
   saveCellAction() {
     const { selectedTds } = this.tableMenus.tableBetter.cellSelection;
     const { table } = this.tableMenus;
@@ -586,7 +596,7 @@ class TablePropertiesForm {
     const attrs = this.getDiffProperties();
     const align = attrs['text-align'];
     const newWidth = attrs['width'];
-    const newHeight = attrs['height']; // On récupère la nouvelle hauteur
+    const newHeight = attrs['height'];
 
     // Récupération du SCALE (Zoom interne du WYSIWYG)
     const scale = this.tableMenus.tableBetter.scale || 1;
@@ -602,6 +612,7 @@ class TablePropertiesForm {
 
     let requestedWidth: number | null = null;
 
+    // Calcul de la largeur demandée et validation du minimum
     if (newWidth) {
       const floatW = parseFloat(newWidth);
       requestedWidth = newWidth.endsWith('%')
@@ -614,6 +625,7 @@ class TablePropertiesForm {
         attrs['width'] = `${MIN_WIDTH}px`;
       }
 
+      // Application sur les cellules non-sélectionnées pour maintenir la structure
       const allRows = table.querySelectorAll('tr');
       for (const row of allRows) {
         const cells = row.querySelectorAll('td, th');
@@ -710,11 +722,13 @@ class TablePropertiesForm {
         isDiffCalculated = true;
       }
 
+      // Remplacement du Blot Quill pour appliquer les formats
       const tdBlot = Quill.find(td) as TableCell;
       const blotName = tdBlot.statics.blotName;
       const formats = tdBlot.formats()[blotName];
       const style = this.getCellStyle(td, attrs);
 
+      // Gestion de l'alignement
       if (align) {
         const _align = align === 'left' ? '' : align;
         tdBlot.children.forEach((child: TableCellBlock | ListContainer | TableHeader) => {
@@ -755,52 +769,54 @@ class TablePropertiesForm {
     }
   }
 
+  /**
+   * Logique de sauvegarde des propriétés globales du tableau.
+   * Utilise un RATIO de redimensionnement pour permettre la réduction du tableau
+   */
   saveTableAction() {
     const { table, tableBetter } = this.tableMenus;
     const tableBlot = Quill.find(table) as TableContainer;
     const td = table.querySelector('td,th');
     const attrs = this.getDiffProperties();
+    const scale = tableBetter.scale || 1;
 
     const MIN_COL_WIDTH = 30;
     const MIN_ROW_HEIGHT = 22;
 
-    // A. On compte précisément le nombre de colonnes
+    // compte les colonnes et lignes
     let colsCount = 0;
     const colgroup = tableBlot.colgroup();
-
     if (colgroup) {
-      // Méthode 1 : Via les balises <col>
       let col = colgroup.children.head;
-      while (col) {
-        colsCount++;
-        col = col.next;
-      }
+      while (col) { colsCount++; col = col.next; }
     }
-
-    // Fallback : Si pas de colgroup, on compte les cellules de la 1ère ligne
     if (colsCount === 0) {
       const firstRow = table.querySelector('tr');
-      if (firstRow) {
-        colsCount = firstRow.children.length;
-      }
+      if (firstRow) colsCount = firstRow.children.length;
     }
-
     if (colsCount === 0) colsCount = 1;
 
-    // B. Le Minimum du Largeur = Nb Colonnes * 30px
     const REQUIRED_TABLE_WIDTH = colsCount * MIN_COL_WIDTH;
 
-    // C. Le Minimum hauteur = Nb Lignes * 22px
     const rows = table.querySelectorAll('tr');
     const rowsCount = rows.length || 1;
     const REQUIRED_TABLE_HEIGHT = rowsCount * MIN_ROW_HEIGHT;
 
-    let targetWidthStr = this.attrs['width'];
 
-    // Si l'utilisateur n'a rien mis, on prend la largeur actuelle
-    if (!targetWidthStr) {
-      targetWidthStr = table.style.width || table.getAttribute('width') || '100%';
+    // On nettoie pour lire les vraies dimensions actuelles
+    table.style.removeProperty('min-width');
+    table.style.removeProperty('min-height');
+    if (table.parentElement) {
+      table.parentElement.style.removeProperty('min-width');
     }
+
+    const currentTableRect = table.getBoundingClientRect();
+    const currentVisualWidth = currentTableRect.width / scale;
+    const currentVisualHeight = currentTableRect.height / scale;
+
+    // Logique pour la largeur
+    let targetWidthStr = this.attrs['width'];
+    if (!targetWidthStr) targetWidthStr = table.style.width || table.getAttribute('width') || '100%';
 
     let finalWidthPx = 0;
     let isPercent = false;
@@ -810,34 +826,53 @@ class TablePropertiesForm {
     if (!isNaN(rawW)) {
       if (!targetWidthStr.endsWith('%') && !targetWidthStr.endsWith('px')) targetWidthStr += 'px';
       isPercent = targetWidthStr.endsWith('%');
-
-      // Conversion en pixels pour comparer
       const containerWidth = getCorrectContainerWidth();
       finalWidthPx = isPercent ? (rawW * containerWidth / 100) : rawW;
 
-      // Si l'utilisateur demande moins que le minimum vital (ex: 1px pour 3 cols)
       if (finalWidthPx < REQUIRED_TABLE_WIDTH) {
-        // ON FORCE LE MINIMUM CALCULÉ
         finalWidthPx = REQUIRED_TABLE_WIDTH;
         targetWidthStr = `${REQUIRED_TABLE_WIDTH}px`;
-        isPercent = false; // On passe en pixel fixe pour stabiliser
-        forceResetMode = true; // On active le mode "Reset des colonnes"
+        isPercent = false;
+        forceResetMode = true;
       }
-
       attrs['width'] = targetWidthStr;
     }
 
-    // Gestion Hauteur (Minimum 22px)
-    let currentHeight = this.attrs['height'];
-    if (currentHeight) {
-      const rawH = parseFloat(currentHeight);
+    let widthResizeRatio = 1;
+    if (finalWidthPx > 0 && currentVisualWidth > 0) {
+      widthResizeRatio = finalWidthPx / currentVisualWidth;
+    }
+
+    // Logique pour la hauteur
+    let targetHeightStr = this.attrs['height'];
+    let finalHeightPx = 0;
+
+    // Si pas de hauteur définie, on ne touche à rien
+    if (targetHeightStr) {
+      const rawH = parseFloat(targetHeightStr);
       if (!isNaN(rawH)) {
-        if (!currentHeight.endsWith('%') && !currentHeight.endsWith('px')) currentHeight += 'px';
-        if (rawH < REQUIRED_TABLE_HEIGHT) {
-          currentHeight = `${REQUIRED_TABLE_HEIGHT}px`;
+        if (!targetHeightStr.endsWith('%') && !targetHeightStr.endsWith('px')) targetHeightStr += 'px';
+
+        // Si c'est des px, on vérifie le minimum
+        if (!targetHeightStr.endsWith('%')) {
+          if (rawH < REQUIRED_TABLE_HEIGHT) {
+            targetHeightStr = `${REQUIRED_TABLE_HEIGHT}px`;
+            finalHeightPx = REQUIRED_TABLE_HEIGHT;
+          } else {
+            finalHeightPx = rawH;
+          }
+        } else {
+          // Si %, on estime (moins précis mais fonctionnel)
+          finalHeightPx = rawH;
         }
-        attrs['height'] = currentHeight;
+        attrs['height'] = targetHeightStr;
       }
+    }
+
+    let heightResizeRatio = 1;
+    // On calcule le ratio seulement si on est en pixels (le % vertical est instable en édition)
+    if (finalHeightPx > 0 && currentVisualHeight > 0 && !targetHeightStr.endsWith('%')) {
+      heightResizeRatio = finalHeightPx / currentVisualHeight;
     }
 
     const align = attrs['align'];
@@ -848,53 +883,64 @@ class TablePropertiesForm {
       case 'right': Object.assign(attrs, { 'margin-left': 'auto', 'margin-right': '' }); break;
     }
 
+
     const applyUpdates = () => {
-      if (colgroup && finalWidthPx > 0) {
-        const { operateLine } = this.tableMenus.tableBetter;
-        const cols: HTMLElement[] = [];
+      const { operateLine } = this.tableMenus.tableBetter;
+
+      // 1. application ratio largeur (colgroup)
+      let columnsToResize: HTMLElement[] = [];
+      if (colgroup) {
         let col = colgroup.children.head;
-        while (col) {
-          cols.push(col.domNode as HTMLElement);
-          col = col.next;
-        }
-
-        if (cols.length > 0) {
-          if (forceResetMode) {
-            // CAS 1 : L'utilisateur a mis trop petit.
-            // On impose 30px à TOUT LE MONDE. Pas de jaloux.
-            const safeColWidth = `${MIN_COL_WIDTH}px`;
-
-            cols.forEach(c => {
-              // 1. Update Quill data
-              operateLine.setColWidth(c, safeColWidth, false);
-              // 2. Force CSS immédiate
-              c.style.setProperty('width', safeColWidth, 'important');
-              c.style.setProperty('min-width', safeColWidth, 'important');
-            });
-          } else {
-            // CAS 2 : Taille valide. On distribue proportionnellement.
-            let currentTotal = 0;
-            cols.forEach(c => currentTotal += parseFloat(c.style.width || c.getAttribute('width') || '0'));
-            // Protection division par zéro
-            if (currentTotal <= 1) currentTotal = finalWidthPx;
-
-            const ratio = finalWidthPx / currentTotal;
-
-            cols.forEach(c => {
-              let oldW = parseFloat(c.style.width || c.getAttribute('width') || '0');
-              if (oldW < 1) oldW = finalWidthPx / colsCount; // Fallback
-
-              let newW = oldW * ratio;
-              // Sécurité : une colonne ne descend jamais sous 30px
-              if (newW < MIN_COL_WIDTH) newW = MIN_COL_WIDTH;
-
-              operateLine.setColWidth(c, `${newW}px`, false);
-            });
-          }
-        }
+        while (col) { columnsToResize.push(col.domNode as HTMLElement); col = col.next; }
+      } else {
+        const firstRow = table.querySelector('tr');
+        if (firstRow) columnsToResize = Array.from(firstRow.children) as HTMLElement[];
       }
 
-      // B. On force le tableau entier
+      if (columnsToResize.length > 0 && (forceResetMode || Math.abs(widthResizeRatio - 1) > 0.001)) {
+        columnsToResize.forEach(col => {
+          let newWStr = '';
+          if (forceResetMode) {
+            newWStr = `${MIN_COL_WIDTH}px`;
+          } else {
+            const rect = col.getBoundingClientRect();
+            const currentW = rect.width / scale;
+            let newW = Math.round(currentW * widthResizeRatio);
+            if (newW < MIN_COL_WIDTH) newW = MIN_COL_WIDTH;
+            newWStr = `${newW}px`;
+          }
+          operateLine.setColWidth(col, newWStr, false);
+          col.style.setProperty('width', newWStr, 'important');
+          col.style.setProperty('min-width', newWStr, 'important');
+          if (!newWStr.endsWith('%')) col.setAttribute('width', newWStr.replace('px', ''));
+        });
+      }
+
+      // 2. application ratio hauteur (tr)
+      if (Math.abs(heightResizeRatio - 1) > 0.001) {
+        rows.forEach((row: HTMLElement) => {
+          const rect = row.getBoundingClientRect();
+          const currentH = rect.height / scale;
+
+          let newH = Math.round(currentH * heightResizeRatio);
+          if (newH < MIN_ROW_HEIGHT) newH = MIN_ROW_HEIGHT;
+
+          const newHStr = `${newH}px`;
+
+          // 1. Force sur le TR
+          row.style.setProperty('height', newHStr, 'important');
+          row.style.setProperty('min-height', newHStr, 'important'); // Débloque la réduction
+          row.setAttribute('height', String(newH));
+
+          // 2. Force sur les cellules enfants (sinon elles bloquent le TR)
+          Array.from(row.children).forEach((cell: HTMLElement) => {
+            cell.style.setProperty('height', newHStr, 'important');
+            cell.style.removeProperty('min-height'); // On nettoie pour éviter les conflits
+            cell.setAttribute('height', String(newH));
+          });
+        });
+      }
+
       const currentTemp = tableBlot.temporary()?.domNode;
       const targets = [table];
       if (currentTemp) targets.push(currentTemp);
@@ -915,13 +961,12 @@ class TablePropertiesForm {
         if (attrs['height']) {
           const h = attrs['height'];
           target.style.setProperty('height', h, 'important');
-          target.style.setProperty('min-height', h, 'important');
+          target.style.setProperty('min-height', h, 'important'); // Important pour la réduction globale
           if (!h.endsWith('%')) target.setAttribute('height', h.replace('px', ''));
         }
       });
     };
 
-    // DOUBLE EXÉCUTION (Pour forcer le navigateur à obéir)
     applyUpdates();
     setTimeout(() => {
       applyUpdates();
