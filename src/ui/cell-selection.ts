@@ -57,6 +57,7 @@ class CellSelection {
   disabledList: Array<HTMLElement | Element>;
   singleList: Array<HTMLElement | Element>;
   tableBetter: QuillTableBetter;
+
   constructor(quill: Quill, tableBetter: QuillTableBetter) {
     this.quill = quill;
     this.selectedTds = [];
@@ -65,9 +66,47 @@ class CellSelection {
     this.disabledList = [];
     this.singleList = [];
     this.tableBetter = tableBetter;
+    window.addEventListener('keydown', this.handleWindowKeyDown, true);
     this.quill.root.addEventListener('click', this.handleClick.bind(this));
     this.initDocumentListener();
     this.initWhiteList();
+  }
+
+  handleWindowKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const range = sel.getRangeAt(0);
+      // On clone le contenu pour compter les cellules réellement prises dans la sélection bleue
+      const fragment = range.cloneContents();
+      const selectedCellsCount = fragment.querySelectorAll('td, th').length;
+
+      if (selectedCellsCount === 0) return;
+
+      // On cherche le tableau d'origine via le point d'ancrage (là où le clic a commencé)
+      const anchor = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as Element;
+      let table = anchor.closest('table');
+
+      // Fallback : Si l'ancrage est hors tableau (ex: sélection inversée), on teste le focus
+      if (!table) {
+        const focus = sel.focusNode.nodeType === 3 ? sel.focusNode.parentElement : sel.focusNode as Element;
+        table = focus.closest('table');
+      }
+
+      if (table) {
+        const totalCellsCount = table.querySelectorAll('td, th').length;
+
+        // Si on a sélectionné des cellules (selectedCellsCount > 0) 
+        // MAIS qu'on n'a pas tout sélectionné (selectedCellsCount < totalCellsCount) on bloque et ils devront passer par l'outil pour supprimer une ligne ou une colonne (chéééé)
+        if (selectedCellsCount > 0 && selectedCellsCount < totalCellsCount) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        }
+        // Sinon (selectedCellsCount === totalCellsCount), on autorise (suppression du tableau entier).
+      }
+    }
   }
 
   attach(input: HTMLElement) {
@@ -97,7 +136,7 @@ class CellSelection {
 
   exitTableFocus(block: TableCellChildren, up: boolean) {
     const cell = getCorrectCellBlot(block);
-    if(!cell) return;
+    if (!cell) return;
     const table = cell.table();
     const offset = up ? -1 : table.length();
     const index = table.offset(this.quill.scroll) + offset;
@@ -148,7 +187,7 @@ class CellSelection {
       }
       res = `<tr>${res}</tr>`;
       html += res;
-    } 
+    }
     html = `<table><tbody>${html}</tbody></table>`;
     html = tableBlot.getCopyTable(html);
     const text = this.getText(html);
@@ -335,6 +374,7 @@ class CellSelection {
   }
 
   handleMousedown(e: MouseEvent) {
+    if (e.button !== 0) return; // Ignore right click
     const table = (e.target as Element).closest('table');
     if (!table) return;
     this.tableBetter.tableMenus.destroyTablePropertiesForm();
@@ -347,7 +387,7 @@ class CellSelection {
     startTd.classList.add('ql-cell-focused');
     this.setHeaderRowSwitch();
     this.setMenuDisable('merge');
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       const endTd = (e.target as Element).closest('td,th');
       if (!endTd) return;
@@ -360,6 +400,7 @@ class CellSelection {
       const endCorrectBounds = getCorrectBounds(endTd, this.quill.container);
       const computeBounds = getComputeBounds(startCorrectBounds, endCorrectBounds);
       this.selectedTds = getComputeSelectedTds(computeBounds, table, this.quill.container);
+
       for (const td of this.selectedTds) {
         td.classList && td.classList.add('ql-cell-selected');
       }
@@ -630,12 +671,27 @@ class CellSelection {
   removeSelectedTdContent(td: Element) {
     const tdBlot = Quill.find(td) as TableCell;
     let head = tdBlot.children.head as TableCellBlock;
-    const cellId = head.formats()[TableCellBlock.blotName];
-    const cellBlock = this.quill.scroll.create(TableCellBlock.blotName, cellId);
-    tdBlot.insertBefore(cellBlock, head);
-    while (head) {
-      head.remove();
-      head = head.next;
+
+    try {
+      if (!head || typeof head.formats !== 'function') {
+        console.warn("[removeSelectedTdContent] Head missing or invalid formats", head);
+        return;
+      }
+      const formats = head.formats();
+      if (!formats || !formats[TableCellBlock.blotName]) {
+        console.warn("[removeSelectedTdContent] No ID found in formats. Skipping to avoid Object.keys crash.");
+        return;
+      }
+      const cellId = formats[TableCellBlock.blotName];
+
+      const cellBlock = this.quill.scroll.create(TableCellBlock.blotName, cellId);
+      tdBlot.insertBefore(cellBlock, head);
+      while (head) {
+        head.remove();
+        head = head.next;
+      }
+    } catch (err) {
+      console.error("ERROR in removeSelectedTdContent:", err);
     }
   }
 

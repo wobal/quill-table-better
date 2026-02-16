@@ -711,6 +711,13 @@ ol.table-list-container {
   }
 }
 
+/* Quand on sélectionne des cellules, on interdit TOUTE sélection de texte ailleurs */
+body.is-table-selecting {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: default;
+}
+
 // animation
 @keyframes ql-table-input-shake {
   20% {
