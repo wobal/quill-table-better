@@ -613,6 +613,7 @@ class TablePropertiesForm {
     let requestedWidth: number | null = null;
 
     // Calcul de la largeur demandée et validation du minimum
+    // --- GESTION WIDTH : APPLICATION SUR LE PARENT (1ère LIGNE) ---
     if (newWidth) {
       const floatW = parseFloat(newWidth);
       requestedWidth = newWidth.endsWith('%')
@@ -625,39 +626,54 @@ class TablePropertiesForm {
         attrs['width'] = `${MIN_WIDTH}px`;
       }
 
-      // Application sur les cellules non-sélectionnées pour maintenir la structure
-      const allRows = table.querySelectorAll('tr');
-      for (const row of allRows) {
-        const cells = row.querySelectorAll('td, th');
-        for (const cell of cells) {
-          const isSelected = selectedTds.some(td => td.isEqualNode(cell));
+      // On récupère le "Parent" des colonnes : la Première Ligne
+      const firstRow = table.querySelector('tr');
 
-          if (!isSelected) {
-            const cellEl = cell as HTMLElement;
+      if (firstRow) {
+        // On utilise un Set pour éviter de traiter 2 fois la même colonne
+        const processedCols = new Set<number>();
 
-            // Nettoyage cellule non-sélectionnée
-            cellEl.style.removeProperty('min-width');
+        for (const td of selectedTds) {
+          const cellIndex = (td as HTMLTableCellElement).cellIndex;
 
-            // 1. Largeur Visuelle / Scale
-            const rect = cellEl.getBoundingClientRect();
-            let exactWidth = rect.width / scale;
+          if (!processedCols.has(cellIndex)) {
+            //On cible la cellule "Parent" dans la première ligne
+            const parentCell = firstRow.cells[cellIndex] as HTMLElement;
 
-            // 2. Soustraire Padding/Border (Valeurs CSS pures, donc pas de division par scale)
-            const computed = window.getComputedStyle(cellEl);
-            if (computed.boxSizing === 'content-box') {
-              const pl = parseFloat(computed.paddingLeft) || 0;
-              const pr = parseFloat(computed.paddingRight) || 0;
-              const bl = parseFloat(computed.borderLeftWidth) || 0;
-              const br = parseFloat(computed.borderRightWidth) || 0;
-              exactWidth = exactWidth - pl - pr - bl - br;
+            if (parentCell) {
+              // On mesure le parent
+              const rect = parentCell.getBoundingClientRect();
+              let currentParentWidth = rect.width / scale;
+
+              const computed = window.getComputedStyle(parentCell);
+              if (computed.boxSizing === 'content-box') {
+                const pl = parseFloat(computed.paddingLeft) || 0;
+                const pr = parseFloat(computed.paddingRight) || 0;
+                const bl = parseFloat(computed.borderLeftWidth) || 0;
+                const br = parseFloat(computed.borderRightWidth) || 0;
+                currentParentWidth = currentParentWidth - pl - pr - bl - br;
+              }
+
+              // C'est ici qu'on définit de combien le tableau doit grandir/rétrécir
+              if (!isDiffCalculated) {
+                widthDiff = requestedWidth - currentParentWidth;
+                isDiffCalculated = true;
+              }
+
+              // Application des modifications sur le parents
+              parentCell.style.width = attrs['width'];
+              parentCell.setAttribute('width', attrs['width'].replace('px', ''));
+              parentCell.style.removeProperty('min-width');
             }
 
-            exactWidth = exactWidth - 0.1;
-
-            if (exactWidth > 0) {
-              cellEl.style.width = `${exactWidth}px`;
-            }
+            processedCols.add(cellIndex);
           }
+
+          // On l'applique aussi sur la cellule sélectionnée
+          const el = td as HTMLElement;
+          el.style.width = attrs['width'];
+          el.setAttribute('width', attrs['width'].replace('px', ''));
+          el.style.removeProperty('min-width');
         }
       }
     }
