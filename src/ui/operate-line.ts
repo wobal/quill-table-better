@@ -94,6 +94,8 @@ class OperateLine {
     return child;
   }
 
+  // Calcule la position et la taille du rectangle fantôme (pointillés)
+  // Utilise toujours le 'scale' pour convertir l'écran (zoomé) en taille logique (réelle du DOM)
   getDragTableProperty(table: Element) {
     const scale = this.tableBetter.scale || 1;
     const rect = table.getBoundingClientRect();
@@ -264,6 +266,7 @@ class OperateLine {
     return { dragBlockProps };
   }
 
+  // Récupère les cellules impactées verticalement quand on a un rowspan
   getVerticalCells(cell: Element, rowspan: number) {
     let row = cell.parentElement;
     while (rowspan > 1 && row) {
@@ -274,6 +277,8 @@ class OperateLine {
     return row.children;
   }
 
+  // Événement principal d'écoute de la souris. 
+  // Cache ou affiche les outils dynamiquement selon là où se trouve la souris.
   handleMouseMove(e: MouseEvent) {
     if (!this.quill.isEnabled()) return;
 
@@ -358,7 +363,10 @@ class OperateLine {
     return node.classList.contains('ql-operate-line-container');
   }
 
-  // Système de redimensionnement Horizontal 
+  /**
+   * Redimensionnement Horizontal (Colonnes)
+   * Modifie les colgroup si existants, sinon met à jour toutes les TD de la colonne visuelle.
+   */
   setCellLevelRect(cell: Element, clientX: number) {
     const scale = this.tableBetter.scale || 1;
     const tableBlot = (Quill.find(cell) as TableCell).table();
@@ -556,102 +564,203 @@ class OperateLine {
     }
   }
 
+  /**
+   * REDIMENSIONNEMENT GLOBAL DU TABLEAU (Drag du coin bas-droit)
+   * Répartit l'agrandissement/rétrécissement de la souris de façon égale sur toutes les colonnes/lignes.
+   */
   setCellsRect(cell: Element, changeX: number, changeY: number) {
     const scale = this.tableBetter.scale || 1;
-    const rows = cell.parentElement.parentElement.children;
-    const maxColNum = this.getMaxColNum(cell);
-    const averageX = changeX / maxColNum;
-    const averageY = changeY / rows.length;
-    // on remplace Element, string, string par number pour pouvoir faire le calcul de pixel pour le "preNodes.push"
-    const preNodes: [Element, number, number][] = [];
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const isPercent = tableBlot.isPercent();
     const colgroup = tableBlot.colgroup() as TableColgroup;
-    let bounds = tableBlot.domNode.getBoundingClientRect();
+    const tableNode = tableBlot.domNode as HTMLTableElement;
+    let bounds = tableNode.getBoundingClientRect();
 
-    for (const row of rows) {
-      const cells = row.children;
-      for (const cell of cells) {
-        const colspan = ~~cell.getAttribute('colspan') || 1;
-        const { width, height } = cell.getBoundingClientRect();
-        preNodes.push([cell, width + averageX * colspan, height + averageY]);
-      }
-    }
+    const logicalChangeX = changeX / scale;
+    const logicalChangeY = changeY / scale;
 
-    // Conversion en pixels logique
-    if (colgroup) {
-      let col = colgroup.children.head;
+    const rows = Array.from(cell.parentElement.parentElement.children) as HTMLElement[];
 
-      // Nouveau calcul pour les hauteurs
-      for (const [node, , height] of preNodes) {
-        // Division par le scale 
-        let cHeight = Math.round(height / scale);
-        if (cHeight < MIN_HEIGHT) cHeight = MIN_HEIGHT;
+    let rowHeights = rows.map(r => r.getBoundingClientRect().height / scale);
+    let remainingChangeY = logicalChangeY;
+    let safetyY = 0; // Sécurité anti-boucle infinie
 
-        setElementAttribute(node, { height: String(cHeight) });
-        setElementProperty(node as HTMLElement, { height: `${cHeight}px` });
-      }
-      // Maj des largeurs
-      while (col) {
-        let { width } = col.domNode.getBoundingClientRect();
-        // On ajoute la part de changement (averageX) au width écran, puis on scale
-        let newColWidth = Math.round((width + averageX) / scale);
-        if (newColWidth < MIN_WIDTH) newColWidth = MIN_WIDTH;
+    // Algorithme de distribution 
+    while (Math.abs(remainingChangeY) > 1 && safetyY < 50) {
+      safetyY++;
+      let activeRows = [];
 
-        this.setColWidth(col.domNode, String(newColWidth), isPercent);
-        col = col.next;
-      }
-    } else {
-      // Tableau sans colgroup
-      let colIdx = 0;
-      for (const [node, targetW, targetH] of preNodes) {
-        // 1. On récupère le colspan de la cellule actuelle
-        const colspan = parseInt(node.getAttribute('colspan')) || 1;
-
-        // 2. On calcule le MIN_WIDTH dynamique !
-        const dynamicMinWidth = MIN_WIDTH * colspan;
-
-        let cWidth = Math.round(targetW / scale);
-        let cHeight = Math.round(targetH / scale);
-
-        let cappedW = cWidth;
-
-        // 3. On utilise le minimum dynamique ici
-        if (cWidth < dynamicMinWidth) cappedW = dynamicMinWidth;
-        if (cHeight < MIN_HEIGHT) cHeight = MIN_HEIGHT;
-
-        cWidth = cappedW;
-
-        const sWidth = isPercent ? getCorrectWidth(cWidth, isPercent) : `${cWidth}px`;
-        const sHeight = `${cHeight}px`;
-
-        setElementAttribute(node, { width: String(cWidth), height: String(cHeight) });
-
-        const el = node as HTMLElement;
-        setElementProperty(el, { width: sWidth, height: sHeight });
-        if (!isPercent) {
-          el.style.setProperty('width', sWidth, 'important');
-          el.style.removeProperty('min-width');
+      // On cherche les lignes qui ont encore le droit de rétrécir
+      for (let i = 0; i < rows.length; i++) {
+        if (remainingChangeY < 0 && rowHeights[i] > MIN_HEIGHT + 0.5) {
+          activeRows.push(i);
+        } else if (remainingChangeY > 0) {
+          activeRows.push(i); // Si on agrandit, toutes les lignes sont actives
         }
-        colIdx++;
+      }
+
+      if (activeRows.length === 0) break; // Fin si tout est compressé au maximum
+
+      let stepY = remainingChangeY / activeRows.length;
+      remainingChangeY = 0; // On vide la réserve, on verra si on doit en remettre
+
+      for (let i of activeRows) {
+        let newH = rowHeights[i] + stepY;
+        if (newH < MIN_HEIGHT) {
+          // La ligne touche le fond : on récupère le rétrécissement non utilisé
+          remainingChangeY += (newH - MIN_HEIGHT);
+          rowHeights[i] = MIN_HEIGHT;
+        } else {
+          rowHeights[i] = newH;
+        }
       }
     }
 
-    // Maj de la largeur totale du tableau
-    // On convertit le changement X en logique pour l'appliquer à la largeur actuelle
-    const logicalChangeX = Math.round(changeX / scale);
+    // Application physique des hauteurs (TR et TD)
+    for (let i = 0; i < rows.length; i++) {
+      let cHeight = Math.round(rowHeights[i]);
+      if (cHeight < MIN_HEIGHT) cHeight = MIN_HEIGHT;
+      const sHeight = `${cHeight}px`;
+      const row = rows[i];
 
-    // On récupère la largeur logique actuelle via style ou attribut pour éviter les erreurs de scale inverse
+      row.setAttribute('height', String(cHeight));
+      row.style.setProperty('height', sHeight, 'important');
+      row.style.removeProperty('min-height');
+      row.style.setProperty('max-height', sHeight, 'important');
+
+      const cells = Array.from(row.children) as HTMLElement[];
+      for (const c of cells) {
+        c.setAttribute('height', String(cHeight));
+        c.style.setProperty('height', sHeight, 'important');
+        c.style.removeProperty('min-height');
+        c.style.setProperty('max-height', sHeight, 'important');
+      }
+    }
+
+    let leftoverX = 0; // Garde en mémoire ce qu'on n'a pas pu rétrécir
+
+    if (colgroup) {
+      // --- TABLEAU AVEC COLGROUP ---
+      let cols = [];
+      let col = colgroup.children.head;
+      while (col) { cols.push(col); col = col.next; }
+
+      let colWidths = cols.map(c => c.domNode.getBoundingClientRect().width / scale);
+      let remainingChangeX = logicalChangeX;
+      let safetyX = 0;
+
+      while (Math.abs(remainingChangeX) > 1 && safetyX < 50) {
+        safetyX++;
+        let activeCols = [];
+        for (let i = 0; i < cols.length; i++) {
+          if (remainingChangeX < 0 && colWidths[i] > MIN_WIDTH + 0.5) {
+            activeCols.push(i);
+          } else if (remainingChangeX > 0) {
+            activeCols.push(i);
+          }
+        }
+        if (activeCols.length === 0) break;
+
+        let stepX = remainingChangeX / activeCols.length;
+        remainingChangeX = 0;
+
+        for (let i of activeCols) {
+          let newW = colWidths[i] + stepX;
+          if (newW < MIN_WIDTH) {
+            remainingChangeX += (newW - MIN_WIDTH);
+            colWidths[i] = MIN_WIDTH;
+          } else {
+            colWidths[i] = newW;
+          }
+        }
+      }
+
+      leftoverX = remainingChangeX; // Sauvegarde de l'excédent non applicable
+
+      for (let i = 0; i < cols.length; i++) {
+        let cWidth = Math.round(colWidths[i]);
+        if (cWidth < MIN_WIDTH) cWidth = MIN_WIDTH;
+        this.setColWidth(cols[i].domNode, String(cWidth), isPercent);
+      }
+
+    } else {
+      // --- TABLEAU SANS COLGROUP (Cellule par cellule) ---
+      for (let r = 0; r < rows.length; r++) {
+        const cells = Array.from(rows[r].children) as HTMLElement[];
+        let cellWidths = cells.map(c => c.getBoundingClientRect().width / scale);
+        let colspans = cells.map(c => parseInt(c.getAttribute('colspan')) || 1);
+
+        let remainingChangeX = logicalChangeX;
+        let safetyX = 0;
+
+        // Même principe, mais on gère le poids (colspan) de chaque cellule
+        while (Math.abs(remainingChangeX) > 1 && safetyX < 50) {
+          safetyX++;
+          let activeIndices = [];
+          let activeColspanSum = 0;
+
+          for (let i = 0; i < cells.length; i++) {
+            let minW = MIN_WIDTH * colspans[i];
+            if (remainingChangeX < 0 && cellWidths[i] > minW + 0.5) {
+              activeIndices.push(i);
+              activeColspanSum += colspans[i];
+            } else if (remainingChangeX > 0) {
+              activeIndices.push(i);
+              activeColspanSum += colspans[i];
+            }
+          }
+
+          if (activeIndices.length === 0) break;
+
+          let currentRemaining = remainingChangeX;
+          remainingChangeX = 0;
+
+          for (let i of activeIndices) {
+            // Les grandes cellules (colspan élevés) absorbent plus de changement
+            let portion = currentRemaining * (colspans[i] / activeColspanSum);
+            let minW = MIN_WIDTH * colspans[i];
+            let newW = cellWidths[i] + portion;
+
+            if (newW < minW) {
+              remainingChangeX += (newW - minW);
+              cellWidths[i] = minW;
+            } else {
+              cellWidths[i] = newW;
+            }
+          }
+        }
+
+        if (r === 0) leftoverX = remainingChangeX; // On prend la ligne 0 comme référence pour la boîte globale
+
+        for (let i = 0; i < cells.length; i++) {
+          let cWidth = Math.round(cellWidths[i]);
+          let minW = MIN_WIDTH * colspans[i];
+          if (cWidth < minW) cWidth = minW;
+
+          const sWidth = isPercent ? getCorrectWidth(cWidth, isPercent) : `${cWidth}px`;
+          const c = cells[i];
+
+          setElementAttribute(c, { width: String(cWidth) });
+          setElementProperty(c, { width: sWidth });
+          if (!isPercent) {
+            c.style.setProperty('width', sWidth, 'important');
+            c.style.removeProperty('min-width');
+          }
+        }
+      }
+    }
+
+    const appliedChangeX = logicalChangeX - leftoverX;
+
     const currentTableWidth = Math.round(bounds.width / scale);
     const logicalBounds = { ...bounds, width: currentTableWidth };
+    const newTotalW = currentTableWidth + Math.round(appliedChangeX);
 
-    const tableNode = tableBlot.domNode;
-    const newTotalW = currentTableWidth + logicalChangeX;
-
-    updateTableWidth(tableNode, logicalBounds, logicalChangeX);
+    updateTableWidth(tableNode, logicalBounds, Math.round(appliedChangeX));
     tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
   }
 
+  // Utilitaire pour appliquer une largeur propre (% ou px)
   setColWidth(domNode: HTMLElement, width: string, isPercent: boolean) {
     if (isPercent) {
       width = getCorrectWidth(parseFloat(width), isPercent);
@@ -669,6 +778,7 @@ class OperateLine {
     }
   }
 
+  // Redimensionnement manuel (Drag) d'une ligne précise (Axe Vertical)
   setCellVerticalRect(cell: Element, clientY: number) {
     const scale = this.tableBetter.scale || 1;
     const rowspan = ~~cell.getAttribute('rowspan') || 1;
@@ -688,7 +798,7 @@ class OperateLine {
     setElementAttribute(row, { height: String(newHeight) });
 
     // 3. Application CSS en Entier
-    row.style.setProperty('height', `${newHeight}px`, 'important');
+    row.style.setProperty('height', `${newHeight}px`);
 
     for (const c of cells) {
       const cRowspan = ~~c.getAttribute('rowspan') || 1;
@@ -698,7 +808,7 @@ class OperateLine {
       }
 
       setElementAttribute(c, { height: String(newHeight) });
-      c.style.setProperty('height', `${newHeight}px`, 'important');
+      c.style.setProperty('height', `${newHeight}px`);
     }
   }
 
@@ -711,6 +821,10 @@ class OperateLine {
     }
   }
 
+  /**
+   * Cette méthode est appelée lors de la création d'un manipulateur (ligne ou carré global).
+   * Elle injecte 3 écouteurs : mousedown (début), mousemove (en cours), mouseup (fin).
+   */
   updateCell(node: Element) {
     if (!node) return;
     const isLine = this.isLine(node);

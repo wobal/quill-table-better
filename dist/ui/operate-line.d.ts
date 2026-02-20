@@ -72,12 +72,24 @@ declare class OperateLine {
     hideDragTable(): void;
     hideLine(): void;
     isLine(node: Element): boolean;
+    /**
+     * Redimensionnement Horizontal (Colonnes)
+     * Modifie les colgroup si existants, sinon met à jour toutes les TD de la colonne visuelle.
+     */
     setCellLevelRect(cell: Element, clientX: number): void;
     setCellRect(cell: Element, clientX: number, clientY: number): void;
+    /**
+     * REDIMENSIONNEMENT GLOBAL DU TABLEAU (Drag du coin bas-droit)
+     * Répartit l'agrandissement/rétrécissement de la souris de façon égale sur toutes les colonnes/lignes.
+     */
     setCellsRect(cell: Element, changeX: number, changeY: number): void;
     setColWidth(domNode: HTMLElement, width: string, isPercent: boolean): void;
     setCellVerticalRect(cell: Element, clientY: number): void;
     toggleLineChildClass(isAdd: boolean): void;
+    /**
+     * Cette méthode est appelée lors de la création d'un manipulateur (ligne ou carré global).
+     * Elle injecte 3 écouteurs : mousedown (début), mousemove (en cours), mouseup (fin).
+     */
     updateCell(node: Element): void;
     updateDragBlock(clientX: number, clientY: number): void;
     updateDragLine(clientX: number, clientY: number): void;

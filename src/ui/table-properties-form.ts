@@ -684,25 +684,33 @@ class TablePropertiesForm {
       for (const td of selectedTds) {
         const row = td.parentElement as HTMLElement;
 
-        // On traite chaque ligne une seule fois
         if (row && row.tagName === 'TR' && !processedRows.has(row)) {
 
-          // On force la nouvelle hauteur sur la LIGNE (TR)
-          row.style.setProperty('height', newHeight, 'important');
-          // On enlève le min-height qui pourrait bloquer la réduction
+          // 1. ON NETTOIE LE STYLE CSS (C'est la clé !)
+          // On retire le style height inline pour laisser la place au futur Drag & Drop
+          row.style.removeProperty('height');
           row.style.removeProperty('min-height');
 
+          // 2. ON APPLIQUE VIA L'ATTRIBUT HTML (Suffisant pour l'affichage, faible pour le conflit)
           if (!newHeight.endsWith('%')) {
+            // L'attribut height définit la taille de base
             row.setAttribute('height', newHeight.replace('px', ''));
+          } else {
+            // Si c'est des %, on est obligé de passer par le style, mais sans important
+            row.style.height = newHeight;
           }
 
-          //  On force toutes les cellules de la ligne à la nouvelle taille
+          // 3. IDEM POUR LES CELLULES
           Array.from(row.children).forEach((cell: HTMLElement) => {
-            cell.style.setProperty('height', newHeight, 'important');
+            // On nettoie le style CSS qui bloque
+            cell.style.removeProperty('height');
             cell.style.removeProperty('min-height');
 
+            // On applique via l'attribut
             if (!newHeight.endsWith('%')) {
               cell.setAttribute('height', newHeight.replace('px', ''));
+            } else {
+              cell.style.height = newHeight;
             }
           });
 
@@ -900,63 +908,84 @@ class TablePropertiesForm {
     }
 
 
+    // =========================================================
+    // CORRECTION : LECTURE DES TAILLES INITIALES (UNE SEULE FOIS)
+    // =========================================================
+    const initialColWidths: { el: HTMLElement, w: number, minW: number, isCol: boolean }[] = [];
+
+    let columnsToResize: HTMLElement[] = [];
+    if (colgroup) {
+      let col = colgroup.children.head;
+      while (col) { columnsToResize.push(col.domNode as HTMLElement); col = col.next; }
+    } else {
+      const firstRow = table.querySelector('tr');
+      if (firstRow) columnsToResize = Array.from(firstRow.children) as HTMLElement[];
+    }
+
+    // On stocke la vraie taille actuelle de chaque colonne AVANT toute modification
+    columnsToResize.forEach(col => {
+      const colspan = parseInt(col.getAttribute('colspan')) || 1;
+      const minW = MIN_COL_WIDTH * colspan;
+      const currentW = col.getBoundingClientRect().width / scale;
+      initialColWidths.push({ el: col, w: currentW, minW: minW, isCol: col.tagName === 'COL' });
+    });
+
+    const initialRowHeights: { el: HTMLElement, h: number }[] = [];
+    // On stocke la vraie taille de chaque ligne AVANT modification
+    rows.forEach((row: HTMLElement) => {
+      initialRowHeights.push({ el: row, h: row.getBoundingClientRect().height / scale });
+    });
+
     const applyUpdates = () => {
       const { operateLine } = this.tableMenus.tableBetter;
 
-      // 1. application ratio largeur (colgroup)
-      let columnsToResize: HTMLElement[] = [];
-      if (colgroup) {
-        let col = colgroup.children.head;
-        while (col) { columnsToResize.push(col.domNode as HTMLElement); col = col.next; }
-      } else {
-        const firstRow = table.querySelector('tr');
-        if (firstRow) columnsToResize = Array.from(firstRow.children) as HTMLElement[];
-      }
-
-      if (columnsToResize.length > 0 && (forceResetMode || Math.abs(widthResizeRatio - 1) > 0.001)) {
-        columnsToResize.forEach(col => {
+      // Application ratio largeur
+      if (initialColWidths.length > 0 && (forceResetMode || Math.abs(widthResizeRatio - 1) > 0.001)) {
+        initialColWidths.forEach(item => {
           let newWStr = '';
+
           if (forceResetMode) {
-            newWStr = `${MIN_COL_WIDTH}px`;
+            newWStr = `${item.minW}px`;
           } else {
-            const rect = col.getBoundingClientRect();
-            const currentW = rect.width / scale;
-            let newW = Math.round(currentW * widthResizeRatio);
-            if (newW < MIN_COL_WIDTH) newW = MIN_COL_WIDTH;
+            let newW = Math.round(item.w * widthResizeRatio);
+            if (newW < item.minW) newW = item.minW;
             newWStr = `${newW}px`;
           }
-          operateLine.setColWidth(col, newWStr, false);
-          col.style.setProperty('width', newWStr, 'important');
-          col.style.setProperty('min-width', newWStr, 'important');
-          if (!newWStr.endsWith('%')) col.setAttribute('width', newWStr.replace('px', ''));
+
+          if (item.isCol) {
+            operateLine.setColWidth(item.el, newWStr, false);
+          } else {
+            item.el.style.setProperty('width', newWStr, 'important');
+            item.el.style.removeProperty('min-width');
+            if (!newWStr.endsWith('%')) item.el.setAttribute('width', newWStr.replace('px', ''));
+          }
         });
       }
 
-      // 2. application ratio hauteur (tr)
+      // Application ratio hauteur
       if (Math.abs(heightResizeRatio - 1) > 0.001) {
-        rows.forEach((row: HTMLElement) => {
-          const rect = row.getBoundingClientRect();
-          const currentH = rect.height / scale;
-
-          let newH = Math.round(currentH * heightResizeRatio);
+        initialRowHeights.forEach(item => {
+          // Utilisation de "item.h" (la valeur mémorisée)
+          let newH = Math.round(item.h * heightResizeRatio);
           if (newH < MIN_ROW_HEIGHT) newH = MIN_ROW_HEIGHT;
 
           const newHStr = `${newH}px`;
 
-          // 1. Force sur le TR
-          row.style.setProperty('height', newHStr, 'important');
-          row.style.setProperty('min-height', newHStr, 'important'); // Débloque la réduction
-          row.setAttribute('height', String(newH));
+          item.el.setAttribute('height', String(newH));
+          item.el.style.setProperty('height', newHStr, 'important');
+          item.el.style.setProperty('max-height', newHStr, 'important');
+          item.el.style.setProperty('min-height', '0px', 'important');
 
-          // 2. Force sur les cellules enfants (sinon elles bloquent le TR)
-          Array.from(row.children).forEach((cell: HTMLElement) => {
-            cell.style.setProperty('height', newHStr, 'important');
-            cell.style.removeProperty('min-height'); // On nettoie pour éviter les conflits
+          Array.from(item.el.children).forEach((cell: HTMLElement) => {
             cell.setAttribute('height', String(newH));
+            cell.style.setProperty('height', newHStr, 'important');
+            cell.style.setProperty('max-height', newHStr, 'important');
+            cell.style.setProperty('min-height', '0px', 'important');
           });
         });
       }
 
+      // Application sur le conteneur Table Global
       const currentTemp = tableBlot.temporary()?.domNode;
       const targets = [table];
       if (currentTemp) targets.push(currentTemp);
@@ -967,8 +996,9 @@ class TablePropertiesForm {
         if (attrs['width']) {
           const w = attrs['width'];
           target.style.setProperty('width', w, 'important');
+          target.style.removeProperty('min-width');
+
           if (!w.endsWith('%')) {
-            target.style.setProperty('min-width', w, 'important');
             target.setAttribute('width', w.replace('px', ''));
           } else {
             target.setAttribute('width', w);
@@ -977,7 +1007,8 @@ class TablePropertiesForm {
         if (attrs['height']) {
           const h = attrs['height'];
           target.style.setProperty('height', h, 'important');
-          target.style.setProperty('min-height', h, 'important'); // Important pour la réduction globale
+          target.style.removeProperty('min-height');
+          target.style.removeProperty('max-height');
           if (!h.endsWith('%')) target.setAttribute('height', h.replace('px', ''));
         }
       });
