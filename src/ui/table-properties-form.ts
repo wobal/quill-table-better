@@ -607,13 +607,10 @@ class TablePropertiesForm {
     // On récupère les dimensions, mais on va devoir les "dé-scaler"
     const tableBounds = table.getBoundingClientRect();
 
-    let widthDiff = 0;
-    let isDiffCalculated = false;
-
+    let totalWidthDiff = 0;
     let requestedWidth: number | null = null;
 
     // Calcul de la largeur demandée et validation du minimum
-    // --- GESTION WIDTH : APPLICATION SUR LE PARENT (1ère LIGNE) ---
     if (newWidth) {
       const floatW = parseFloat(newWidth);
       requestedWidth = newWidth.endsWith('%')
@@ -630,18 +627,15 @@ class TablePropertiesForm {
       const firstRow = table.querySelector('tr');
 
       if (firstRow) {
-        // On utilise un Set pour éviter de traiter 2 fois la même colonne
-        const processedCols = new Set<number>();
+        const colsToUpdate = new Map<number, HTMLElement>();
 
         for (const td of selectedTds) {
           const cellIndex = (td as HTMLTableCellElement).cellIndex;
 
-          if (!processedCols.has(cellIndex)) {
-            //On cible la cellule "Parent" dans la première ligne
+          if (!colsToUpdate.has(cellIndex)) {
             const parentCell = firstRow.cells[cellIndex] as HTMLElement;
 
             if (parentCell) {
-              // On mesure le parent
               const rect = parentCell.getBoundingClientRect();
               let currentParentWidth = rect.width / scale;
 
@@ -654,22 +648,24 @@ class TablePropertiesForm {
                 currentParentWidth = currentParentWidth - pl - pr - bl - br;
               }
 
-              // C'est ici qu'on définit de combien le tableau doit grandir/rétrécir
-              if (!isDiffCalculated) {
-                widthDiff = requestedWidth - currentParentWidth;
-                isDiffCalculated = true;
-              }
+              // calcul des mesures
+              totalWidthDiff += (requestedWidth - currentParentWidth);
 
-              // Application des modifications sur le parents
-              parentCell.style.width = attrs['width'];
-              parentCell.setAttribute('width', attrs['width'].replace('px', ''));
-              parentCell.style.removeProperty('min-width');
+              // On garde la cellule en mémoire pour la phase d'écriture
+              colsToUpdate.set(cellIndex, parentCell);
             }
-
-            processedCols.add(cellIndex);
           }
+        }
 
-          // On l'applique aussi sur la cellule sélectionnée
+        // Maintenant que les calculs sont finis on l'applique sur le parent
+        for (const parentCell of colsToUpdate.values()) {
+          parentCell.style.width = attrs['width'];
+          parentCell.setAttribute('width', attrs['width'].replace('px', ''));
+          parentCell.style.removeProperty('min-width');
+        }
+
+        // On l'applique aussi sur les cellules sélectionnées
+        for (const td of selectedTds) {
           const el = td as HTMLElement;
           el.style.width = attrs['width'];
           el.setAttribute('width', attrs['width'].replace('px', ''));
@@ -725,27 +721,6 @@ class TablePropertiesForm {
       // Nettoyage cellule sélectionnée
       tdEl.style.removeProperty('min-width');
 
-      if (requestedWidth !== null && !isDiffCalculated) {
-
-        // 1. Largeur Visuelle / Scale
-        const rect = tdEl.getBoundingClientRect();
-        let currentContentWidth = rect.width / scale;
-
-        // 2. Soustraire Padding/Border
-        const computed = window.getComputedStyle(tdEl);
-        if (computed.boxSizing === 'content-box') {
-          const pl = parseFloat(computed.paddingLeft) || 0;
-          const pr = parseFloat(computed.paddingRight) || 0;
-          const bl = parseFloat(computed.borderLeftWidth) || 0;
-          const br = parseFloat(computed.borderRightWidth) || 0;
-          currentContentWidth = currentContentWidth - pl - pr - bl - br;
-        }
-
-        // 3. Calcul du delta (CSS pur)
-        widthDiff = requestedWidth - currentContentWidth;
-        isDiffCalculated = true;
-      }
-
       // Remplacement du Blot Quill pour appliquer les formats
       const tdBlot = Quill.find(td) as TableCell;
       const blotName = tdBlot.statics.blotName;
@@ -773,14 +748,14 @@ class TablePropertiesForm {
     this.tableMenus.tableBetter.cellSelection.setSelectedTds(newSelectedTds);
 
     // Mise à jour de la largeur du tableau
-    if (Math.abs(widthDiff) > 0.1) {
+    if (Math.abs(totalWidthDiff) > 0.1) {
       const unscaledBounds = {
         ...tableBounds,
         width: tableBounds.width / scale,
         height: tableBounds.height / scale
       } as DOMRect;
 
-      updateTableWidthUtil(table, unscaledBounds, widthDiff);
+      updateTableWidthUtil(table, unscaledBounds, totalWidthDiff);
 
 
       table.style.removeProperty('min-width');
