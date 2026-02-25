@@ -97,6 +97,52 @@ class Table extends Module {
     quill.clipboard.addMatcher('col', matchTableCol);
     quill.clipboard.addMatcher('table', matchTableTemporary);
     this.language = new Language(options?.language);
+
+    // Forcer un espace séparateur lors du Copier/Coller d'un tableau
+    quill.clipboard.addMatcher('TABLE', (node, delta) => {
+      delta.ops.unshift({ insert: '\n' });
+      return delta;
+    });
+
+    quill.root.addEventListener('keydown', (e: KeyboardEvent) => {
+      // On n'intervient que sur les touches de suppression
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const range = quill.getSelection();
+        // Si du texte est sélectionné, on laisse faire 
+        if (!range || range.length > 0) return;
+
+        const [line, offset] = quill.getLine(range.index);
+
+        // Vérification de l'environnement (A-t-on un voisin au-dessus ET en-dessous ?)
+        if (line && line.prev && line.next) {
+          const prevName = line.prev.statics?.blotName;
+          const nextName = line.next.statics?.blotName;
+
+          const prevIsTable = prevName === TableContainer.blotName || prevName === TableTemporary.blotName;
+          const nextIsTable = nextName === TableContainer.blotName || nextName === TableTemporary.blotName;
+
+          // Si on est entre tableau
+          if (prevIsTable && nextIsTable) {
+
+            // Si on est au début de la ligne et qu'on fait backspace
+            if (e.key === 'Backspace' && offset === 0) {
+              e.preventDefault(); // Bloqué par le navigateur
+              e.stopPropagation(); // On cache l'action à Quill
+              console.log("🛡️ Mur Anti-Fusion : Backspace bloqué !");
+              return;
+            }
+
+            //  Si on est à la fin de la ligne et qu'on fait Suppr
+            if (e.key === 'Delete' && offset === line.length() - 1) {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log("🛡️ Mur Anti-Fusion : Delete bloqué !");
+              return;
+            }
+          }
+        }
+      }
+    }, true); // Le 'true' (Capture phase) permet d'agir avant Quill
     this.cellSelection = new CellSelection(quill, this);
     this.operateLine = new OperateLine(quill, this);
     this.tableMenus = new TableMenus(quill, this);
@@ -240,7 +286,7 @@ class Table extends Module {
     if (range == null) return;
     if (this.isTable(range)) return;
 
-    // 1. DÉTECTION DU VOISIN (Pour le confort initial)
+    // 1. détection du voisin (Pour le confort initial)
     const [line, offset] = this.quill.getLine(range.index);
     const prev = line.prev;
     // Est-ce qu'on est collé à un tableau ?
@@ -250,18 +296,17 @@ class Table extends Module {
       (prev as any).statics.blotName === TableTemporary.blotName
     );
 
-    // 2. CRÉATION DU MUR INITIAL
     // Si on est collé, on met un espace tout de suite
     const separatorDelta = isAdjacentToTable ? new Delta().insert('\n') : new Delta();
 
-    // 3. PRÉPARATION DU TABLEAU AVEC ID UNIQUE
+    // préparation du tableau avec un id unique
     const root = this.quill.root;
     const computedStyle = getComputedStyle(root);
     const width = root.clientWidth
       - parseFloat(computedStyle.paddingLeft || '0')
       - parseFloat(computedStyle.paddingRight || '0');
 
-    // GÉNÉRATION DE L'ID UNIQUE
+    // génération de l'id unique
     // C'est ça qui va permettre à la protection de fonctionner
     const uniqueId = `tbl-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
 
@@ -276,7 +321,7 @@ class Table extends Module {
     const _offset = (isExtra ? 2 : 1) + (isAdjacentToTable ? 1 : 0);
     const extraDelta = isExtra ? new Delta().insert('\n') : new Delta();
 
-    // 4. CONSTRUCTION ET INSERTION
+    // Construction et Insertion
     const base = new Delta()
       .retain(range.index)
       .delete(range.length)

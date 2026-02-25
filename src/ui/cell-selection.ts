@@ -67,44 +67,58 @@ class CellSelection {
     this.singleList = [];
     this.tableBetter = tableBetter;
     window.addEventListener('keydown', this.handleWindowKeyDown, true);
+    window.addEventListener('compositionstart', this.handleWindowKeyDown, true); // Pour les touches à double action ("^^", "¨¨" ...)
+    window.addEventListener('beforeinput', this.handleWindowKeyDown, true);
     this.quill.root.addEventListener('click', this.handleClick.bind(this));
     this.initDocumentListener();
     this.initWhiteList();
   }
 
-  handleWindowKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Backspace' || e.key === 'Delete') {
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
+  handleWindowKeyDown = (e: Event) => {
+    // Si l'événement vient du clavier, on laisse passer les touches de navigation
+    if (e instanceof KeyboardEvent) {
+      const safeKeys = [
+        'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+        'Shift', 'Control', 'Alt', 'Meta', 'Escape',
+        'PageUp', 'PageDown', 'Home', 'End'
+      ];
+      if (safeKeys.includes(e.key)) return;
 
-      const range = sel.getRangeAt(0);
-      // On clone le contenu pour compter les cellules réellement prises dans la sélection bleue
-      const fragment = range.cloneContents();
-      const selectedCellsCount = fragment.querySelectorAll('td, th').length;
+      // On laisse passer Copier (Ctrl+C) et Tout Sélectionner (Ctrl+A)
+      if ((e.ctrlKey || e.metaKey) && ['c', 'a'].includes(e.key.toLowerCase())) return;
+    }
 
-      if (selectedCellsCount === 0) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
 
-      // On cherche le tableau d'origine via le point d'ancrage (là où le clic a commencé)
-      const anchor = sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode as Element;
-      let table = anchor.closest('table');
+    const range = sel.getRangeAt(0);
+    const fragment = range.cloneContents();
+    const selectedCellsCount = fragment.querySelectorAll('td, th').length;
 
-      // Fallback : Si l'ancrage est hors tableau (ex: sélection inversée), on teste le focus
-      if (!table) {
-        const focus = sel.focusNode.nodeType === 3 ? sel.focusNode.parentElement : sel.focusNode as Element;
-        table = focus.closest('table');
-      }
+    // La sélection est entièrement dans UNE SEULE cellule -> On laisse faire
+    if (selectedCellsCount === 0) return;
 
-      if (table) {
-        const totalCellsCount = table.querySelectorAll('td, th').length;
+    const anchorNode = sel.anchorNode;
+    const focusNode = sel.focusNode;
+    if (!anchorNode || !focusNode) return;
 
-        // Si on a sélectionné des cellules (selectedCellsCount > 0) 
-        // MAIS qu'on n'a pas tout sélectionné (selectedCellsCount < totalCellsCount) on bloque et ils devront passer par l'outil pour supprimer une ligne ou une colonne (chéééé)
-        if (selectedCellsCount > 0 && selectedCellsCount < totalCellsCount) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }
-        // Sinon (selectedCellsCount === totalCellsCount), on autorise (suppression du tableau entier).
+    const anchor = anchorNode.nodeType === 3 ? anchorNode.parentElement : anchorNode as Element;
+    let table = anchor ? anchor.closest('table') : null;
+
+    if (!table) {
+      const focus = focusNode.nodeType === 3 ? focusNode.parentElement : focusNode as Element;
+      table = focus ? focus.closest('table') : null;
+    }
+
+    // On a identifié un tableau avec PLUSIEURS cellules sélectionnées
+    if (table) {
+      const totalCellsCount = table.querySelectorAll('td, th').length;
+
+      // On bloque la touche
+      if (selectedCellsCount > 0 && selectedCellsCount < totalCellsCount) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
       }
     }
   }

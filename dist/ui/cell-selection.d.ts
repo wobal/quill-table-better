@@ -12,7 +12,7 @@ declare class CellSelection {
     singleList: Array<HTMLElement | Element>;
     tableBetter: QuillTableBetter;
     constructor(quill: Quill, tableBetter: QuillTableBetter);
-    handleWindowKeyDown: (e: KeyboardEvent) => void;
+    handleWindowKeyDown: (e: Event) => void;
     attach(input: HTMLElement): void;
     clearSelected(): void;
     exitTableFocus(block: TableCellChildren, up: boolean): void;

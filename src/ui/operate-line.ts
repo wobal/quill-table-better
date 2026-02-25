@@ -530,7 +530,6 @@ class OperateLine {
               newW2 = totalLogical - newW1;
 
               masterWidths = { w1: newW1, w2: newW2 };
-              console.log(`   🔑 MASTER DÉFINI (Ligne ${r}): G=${newW1} | D=${newW2}`);
             } else {
               newW1 = masterWidths.w1;
               newW2 = masterWidths.w2;
@@ -551,7 +550,6 @@ class OperateLine {
             applyWidth(leftCell, newW, `R${r}-U`);
           }
         }
-        console.groupEnd();
       }
     }
   }
