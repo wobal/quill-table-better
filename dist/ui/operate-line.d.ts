@@ -88,8 +88,8 @@ declare class OperateLine {
     setCellVerticalRect(cell: Element, clientY: number): void;
     toggleLineChildClass(isAdd: boolean): void;
     /**
-     * Cette méthode est appelée lors de la création d'un manipulateur (ligne ou carré global).
-     * Elle injecte 3 écouteurs : mousedown (début), mousemove (en cours), mouseup (fin).
+     * Initialise les écouteurs d'événements pour les outils de redimensionnement (ligne ou carré).
+     * Gère le cycle de vie du glisser-déposer (Drag & Drop) : mousedown, mousemove, mouseup.
      */
     updateCell(node: Element): void;
     updateDragBlock(clientX: number, clientY: number): void;

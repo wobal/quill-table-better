@@ -73,8 +73,9 @@ declare class TablePropertiesForm {
     removePropertiesForm(): void;
     saveAction(type: string): void;
     /**
-     * Logique de sauvegarde des propriétés des cellules.
-     * Gère particulièrement les conflits avec le Drag&Drop manuel en forçant les styles.
+     * Applique les modifications du formulaire de propriétés (largeur, hauteur, alignement, etc.)
+     * aux cellules actuellement sélectionnées.
+     * Gère les calculs en pixels/pourcentages et synchronise l'affichage avec Quill.
      */
     saveCellAction(): void;
     /**

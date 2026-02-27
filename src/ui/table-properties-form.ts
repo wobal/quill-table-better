@@ -575,24 +575,26 @@ class TablePropertiesForm {
   }
 
   /**
-   * Logique de sauvegarde des propriétés des cellules.
-   * Gère particulièrement les conflits avec le Drag&Drop manuel en forçant les styles.
+   * Applique les modifications du formulaire de propriétés (largeur, hauteur, alignement, etc.) 
+   * aux cellules actuellement sélectionnées.
+   * Gère les calculs en pixels/pourcentages et synchronise l'affichage avec Quill.
    */
   saveCellAction() {
     const { selectedTds } = this.tableMenus.tableBetter.cellSelection;
     const { table } = this.tableMenus;
 
-    // On supprime le min-width du tableau et de son attribut HTML
+    // Préparation du tableau
+    // On retire les `min-width` pour permettre au tableau de rétrécir si besoin.
     table.style.removeProperty('min-width');
     table.style.minWidth = '0px';
     table.removeAttribute('width');
 
-    // On supprime le min-width du PARENT (.ql-table-temporary)
     if (table.parentElement) {
       table.parentElement.style.removeProperty('min-width');
       table.parentElement.style.minWidth = '0px';
     }
 
+    // Récupération des propriétés modifiées dans le formulaire par rapport aux anciennes
     const attrs = this.getDiffProperties();
     const align = attrs['text-align'];
     const newWidth = attrs['width'];
@@ -604,13 +606,13 @@ class TablePropertiesForm {
     align && delete attrs['text-align'];
     const newSelectedTds = [];
 
-    // On récupère les dimensions, mais on va devoir les "dé-scaler"
+    // Snapshot des dimensions globales avant modification
     const tableBounds = table.getBoundingClientRect();
 
-    let totalWidthDiff = 0;
+    let totalWidthDiff = 0; // Va accumuler l'impact de nos changements sur la taille totale du tableau
     let requestedWidth: number | null = null;
 
-    // Calcul de la largeur demandée et validation du minimum
+    // Gestion de la largeur (Axe Horizontal)
     if (newWidth) {
       const floatW = parseFloat(newWidth);
       requestedWidth = newWidth.endsWith('%')
@@ -623,10 +625,13 @@ class TablePropertiesForm {
         attrs['width'] = `${MIN_WIDTH}px`;
       }
 
-      // On récupère le "Parent" des colonnes : la Première Ligne
+      // En HTML (table-layout: fixed), la largeur des colonnes est dictée par la PREMIÈRE LIGNE.
+      // On va donc appliquer la largeur aux cellules de la première ligne ("Parent") pour que toute la colonne suive.
       const firstRow = table.querySelector('tr');
 
       if (firstRow) {
+        // Un Map permet de ne pas traiter la même colonne 2 fois si l'utilisateur a sélectionné 
+        // plusieurs cellules situées l'une sous l'autre.
         const colsToUpdate = new Map<number, HTMLElement>();
 
         for (const td of selectedTds) {
@@ -648,7 +653,7 @@ class TablePropertiesForm {
                 currentParentWidth = currentParentWidth - pl - pr - bl - br;
               }
 
-              // calcul des mesures
+              // On calcule combien de pixels on vient d'ajouter ou de retirer au tableau
               totalWidthDiff += (requestedWidth - currentParentWidth);
 
               // On garde la cellule en mémoire pour la phase d'écriture
@@ -674,7 +679,9 @@ class TablePropertiesForm {
       }
     }
 
+    // Gestion de la Hauteur (Axe Vertical)
     if (newHeight) {
+      // Un Set permet d'éviter de traiter la même ligne 2 fois
       const processedRows = new Set<HTMLElement>();
 
       for (const td of selectedTds) {
@@ -682,27 +689,21 @@ class TablePropertiesForm {
 
         if (row && row.tagName === 'TR' && !processedRows.has(row)) {
 
-          // 1. ON NETTOIE LE STYLE CSS (C'est la clé !)
           // On retire le style height inline pour laisser la place au futur Drag & Drop
           row.style.removeProperty('height');
           row.style.removeProperty('min-height');
 
-          // 2. ON APPLIQUE VIA L'ATTRIBUT HTML (Suffisant pour l'affichage, faible pour le conflit)
           if (!newHeight.endsWith('%')) {
-            // L'attribut height définit la taille de base
             row.setAttribute('height', newHeight.replace('px', ''));
           } else {
-            // Si c'est des %, on est obligé de passer par le style, mais sans important
             row.style.height = newHeight;
           }
 
-          // 3. IDEM POUR LES CELLULES
+          // On propage la décision à toutes les cellules de la ligne
           Array.from(row.children).forEach((cell: HTMLElement) => {
-            // On nettoie le style CSS qui bloque
             cell.style.removeProperty('height');
             cell.style.removeProperty('min-height');
 
-            // On applique via l'attribut
             if (!newHeight.endsWith('%')) {
               cell.setAttribute('height', newHeight.replace('px', ''));
             } else {
@@ -715,21 +716,23 @@ class TablePropertiesForm {
       }
     }
 
+    //  Synchronisation avec Quill
     for (const td of selectedTds) {
       const tdEl = td as HTMLElement;
 
       // Nettoyage cellule sélectionnée
       tdEl.style.removeProperty('min-width');
 
-      // Remplacement du Blot Quill pour appliquer les formats
+      // On retrouve l'objet virtuel (Blot) associé à cette balise <td>
       const tdBlot = Quill.find(td) as TableCell;
       const blotName = tdBlot.statics.blotName;
-      const formats = tdBlot.formats()[blotName];
-      const style = this.getCellStyle(td, attrs);
+      const formats = tdBlot.formats()[blotName]; // On sauvegarde ses anciens formats
+      const style = this.getCellStyle(td, attrs); // On génère la nouvelle chaîne CSS 
 
-      // Gestion de l'alignement
+      // Gestion spécifique de l'alignement du texte à l'intérieur de la cellule
       if (align) {
         const _align = align === 'left' ? '' : align;
+        // On traverse les enfants (paragraphes, listes) pour leur appliquer l'alignement
         tdBlot.children.forEach((child: TableCellBlock | ListContainer | TableHeader) => {
           if (child.statics.blotName === ListContainer.blotName) {
             child.children.forEach((ch: TableList) => {
@@ -741,20 +744,24 @@ class TablePropertiesForm {
         });
       }
 
+      // On remplace l'ancien Blot par un nouveau qui intègre nos styles
       const parent = tdBlot.replaceWith(blotName, { ...formats, style }) as TableCell;
       newSelectedTds.push(parent.domNode);
     }
 
+    // On remet à jour l'interface utilisateur pour que le carré bleu de sélection reste sur les bonnes cases
     this.tableMenus.tableBetter.cellSelection.setSelectedTds(newSelectedTds);
 
-    // Mise à jour de la largeur du tableau
+    // Si la largeur des cellules a bougé, la largeur globale de la table doit suivre
     if (Math.abs(totalWidthDiff) > 0.1) {
+      // On retire l'effet du zoom (scale) avant de l'envoyer à l'utilitaire global
       const unscaledBounds = {
         ...tableBounds,
         width: tableBounds.width / scale,
         height: tableBounds.height / scale
       } as DOMRect;
 
+      // Met à jour la balise <table>
       updateTableWidthUtil(table, unscaledBounds, totalWidthDiff);
 
 

@@ -852,16 +852,17 @@ class OperateLine {
   }
 
   /**
-   * Cette méthode est appelée lors de la création d'un manipulateur (ligne ou carré global).
-   * Elle injecte 3 écouteurs : mousedown (début), mousemove (en cours), mouseup (fin).
+   * Initialise les écouteurs d'événements pour les outils de redimensionnement (ligne ou carré).
+   * Gère le cycle de vie du glisser-déposer (Drag & Drop) : mousedown, mousemove, mouseup.
    */
   updateCell(node: Element) {
     if (!node) return;
-    const isLine = this.isLine(node);
+    const isLine = this.isLine(node); // Détermine si on tire une bordure (ligne) ou tout le tableau (carré)
 
     const handleDrag = (e: MouseEvent) => {
       e.preventDefault();
       if (this.drag) {
+        // Déplacement du fantome (la ligne bleue ou le cadre en pointillés).
         if (isLine) {
           this.updateDragLine(e.clientX, e.clientY);
           this.hideDragBlock();
@@ -876,10 +877,13 @@ class OperateLine {
       e.preventDefault();
       const { cellNode, tableNode } = this.options;
 
+      // Calcul et Application de la nouvelle taille 
       if (isLine) {
+        // Redimensionnement d'une seule colonne/ligne  
         this.setCellRect(cellNode, e.clientX, e.clientY);
         this.toggleLineChildClass(false);
       } else {
+        // Redimensionnement global du tableau depuis le coin inférieur droit
         const { right, bottom } = tableNode.getBoundingClientRect();
         const changeX = e.clientX - right;
         const changeY = e.clientY - bottom;
@@ -895,6 +899,8 @@ class OperateLine {
           const scale = this.tableBetter.scale || 1;
           const tableRect = tableNode.getBoundingClientRect();
           const tableW = Math.round(tableRect.width / scale);
+
+          // On force la largeur globale en un nombre entier pour éviter le flou d'affichage
           tableNode.setAttribute('width', String(tableW));
           tableNode.style.width = `${tableW}px`;
           tableNode.style.minWidth = `${tableW}px`;
@@ -902,6 +908,7 @@ class OperateLine {
           const tableBlot = (Quill.find(cellNode) as TableCell).table();
           const colgroup = tableBlot.colgroup();
 
+          // On arrondit également toutes les colonnes internes pour que la somme soit parfaite
           if (colgroup) {
             let col = colgroup.children.head;
             while (col) {
@@ -912,18 +919,18 @@ class OperateLine {
               col = col.next;
             }
           } else {
+            // S'il n'y a pas de colgroup, on utilise la première ligne comme parent 
+            // et on force toutes les autres lignes à copier ses largeurs entières.
             const rows = Array.from((tableNode as HTMLTableElement).rows);
             const firstRow = rows[0];
 
             if (firstRow) {
-              // 1. On capture la "Vérité" sur la première ligne
               const referenceWidths: number[] = [];
               Array.from(firstRow.children).forEach((cell: HTMLElement) => {
                 const w = Math.round(cell.getBoundingClientRect().width / scale);
                 referenceWidths.push(w);
               });
 
-              // 2. On l'applique à TOUTES les lignes pour éliminer les décimales partout
               rows.forEach(row => {
                 Array.from(row.children).forEach((cell: HTMLElement, index) => {
                   if (referenceWidths[index] !== undefined) {
@@ -952,13 +959,13 @@ class OperateLine {
       if (tableNode) {
         tableNode.style.removeProperty('min-width');
 
-        // 1. Snapshot Table
+        // Snapshot Table : On fige la largeur globale actuelle du tableau en pixels entiers
         const tableRect = tableNode.getBoundingClientRect();
         const tableW = Math.round(tableRect.width / scale);
         tableNode.setAttribute('width', String(tableW));
         tableNode.style.width = `${tableW}px`;
 
-        // 2. Snapshot Colonnes (Force l'alignement sur la réalité visuelle)
+        // Snapshot Colonne : On fige la largeur de chaque colonne.
         const tableBlot = (Quill.find(cellNode) as TableCell).table();
         const colgroup = tableBlot.colgroup();
         const rows = Array.from((tableNode as HTMLTableElement).rows);
@@ -995,6 +1002,7 @@ class OperateLine {
         }
       }
 
+      // Apparition des éléments visuels de drag
       if (isLine) {
         this.toggleLineChildClass(true);
       } else {
