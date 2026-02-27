@@ -73,8 +73,9 @@ declare class OperateLine {
     hideLine(): void;
     isLine(node: Element): boolean;
     /**
-     * Redimensionnement Horizontal (Colonnes)
-     * Modifie les colgroup si existants, sinon met à jour toutes les TD de la colonne visuelle.
+     * Redimensionne la largeur des colonnes via le Drag & Drop d'une bordure verticale.
+     * Cette fonction gère deux écosystèmes : les tableaux modernes (avec <colgroup>)
+     * et les tableaux legacy (modification cellule par cellule via une matrice virtuelle).
      */
     setCellLevelRect(cell: Element, clientX: number): void;
     setCellRect(cell: Element, clientX: number, clientY: number): void;

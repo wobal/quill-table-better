@@ -128,7 +128,6 @@ class Table extends Module {
             if (e.key === 'Backspace' && offset === 0) {
               e.preventDefault(); // Bloqué par le navigateur
               e.stopPropagation(); // On cache l'action à Quill
-              console.log("🛡️ Mur Anti-Fusion : Backspace bloqué !");
               return;
             }
 
@@ -136,7 +135,6 @@ class Table extends Module {
             if (e.key === 'Delete' && offset === line.length() - 1) {
               e.preventDefault();
               e.stopPropagation();
-              console.log("🛡️ Mur Anti-Fusion : Delete bloqué !");
               return;
             }
           }

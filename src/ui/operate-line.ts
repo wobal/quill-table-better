@@ -364,18 +364,28 @@ class OperateLine {
   }
 
   /**
-   * Redimensionnement Horizontal (Colonnes)
-   * Modifie les colgroup si existants, sinon met à jour toutes les TD de la colonne visuelle.
+   * Redimensionne la largeur des colonnes via le Drag & Drop d'une bordure verticale.
+   * Cette fonction gère deux écosystèmes : les tableaux modernes (avec <colgroup>) 
+   * et les tableaux legacy (modification cellule par cellule via une matrice virtuelle).
    */
   setCellLevelRect(cell: Element, clientX: number) {
+    // Le "scale" permet de corriger les calculs si l'éditeur a un zoom appliqué (ex: 1.5 pour 150%)
     const scale = this.tableBetter.scale || 1;
     const tableBlot = (Quill.find(cell) as TableCell).table();
     const isPercent = tableBlot.isPercent();
+
+    // Vérifie si le tableau possède l'élément HTML <colgroup> (la norme propre pour redimensionner)
     const colgroup = tableBlot.colgroup() as TableColgroup;
+
+    // Récupère l'index VISUEL (la vraie colonne dans la grille, ignorant les fusions HTML) de la bordure droite
     // @ts-ignore
     const colSum = this.getLevelColSum(cell);
     let bounds = tableBlot.domNode.getBoundingClientRect();
 
+    /**
+     * Utilitaire local pour appliquer proprement la nouvelle largeur.
+     * Met à jour à la fois l'attribut HTML (width="X") et le style CSS (width: Xpx).
+     */
     const applyWidth = (node: Element, logicalW: number, desc: string = '') => {
       const w = logicalW;
       const el = node as HTMLElement;
@@ -390,17 +400,21 @@ class OperateLine {
       }
     };
 
+    // si Le tableau utilise un <colgroup>
     if (colgroup) {
-      const col = this.getCorrectCol(colgroup, colSum);
-      const nextCol = col.next;
+      // On cible les balises <col> invisibles qui contrôlent toute la colonne
+      const col = this.getCorrectCol(colgroup, colSum); // Colonne à gauche de la bordure
+      const nextCol = col.next; // Colonne à droite de la bordure
       const { left: colLeft } = col.domNode.getBoundingClientRect();
 
+      // Drag de la toute dernière bordure à droite du tableau
       if (!nextCol) {
         let newW = (clientX - colLeft) / scale;
         if (newW < MIN_WIDTH) newW = MIN_WIDTH;
         let currentRectW = col.domNode.getBoundingClientRect().width / scale;
-        let diff = newW - currentRectW;
+        let diff = newW - currentRectW; // Différence de largeur pour ajuster la boîte globale
 
+        // Si le mouvement est significatif (> 0.5px), on redimensionne le tableau ENTIER
         if (Math.abs(diff) > 0.5) {
           applyWidth(col.domNode, newW, 'Col Unique');
           bounds.width = bounds.width / scale;
@@ -417,21 +431,22 @@ class OperateLine {
       const rectB = nextCol.domNode.getBoundingClientRect();
       const w1Visual = col.domNode.getBoundingClientRect().width;
       const w2Visual = rectB.width;
-      const totalLogical = (w1Visual + w2Visual) / scale;
+      const totalLogical = (w1Visual + w2Visual) / scale; // Espace total partagé par les 2 colonnes
       let newW1 = (clientX - colLeft) / scale;
       if (newW1 < MIN_WIDTH) newW1 = MIN_WIDTH;
       if (newW1 > totalLogical - MIN_WIDTH) newW1 = totalLogical - MIN_WIDTH;
-      let newW2 = totalLogical - newW1;
+      let newW2 = totalLogical - newW1; // Ce qui reste va à la colonne de droite
 
       applyWidth(col.domNode, newW1, 'Col G');
       applyWidth(nextCol.domNode, newW2, 'Col D');
 
-    } else {
+    } else { // Tableau sans colgroup 
       const tableNode = tableBlot.domNode as HTMLTableElement;
       const maxCols = this.getMaxColNum(cell);
       const cellEndIndex = this.getLevelColSum(cell);
       const isLastVisualColumn = cellEndIndex >= maxCols;
 
+      // Drag de la dernière colonne du tableau
       if (isLastVisualColumn) {
         const { left: colLeft } = cell.getBoundingClientRect();
         let newW = (clientX - colLeft) / scale;
@@ -449,6 +464,9 @@ class OperateLine {
           if (!isPercent) tableNode.style.setProperty('width', `${newTotalW}px`, 'important');
 
           const rows = Array.from(tableNode.rows);
+
+          // Le tableau `blockedUntil` modélise une grille virtuelle pour détecter les cases vides 
+          // causées par des fusions verticales (rowspan) venant du haut.
           const blockedUntil: number[] = [];
           for (let r = 0; r < rows.length; r++) {
             const row = rows[r];
@@ -456,15 +474,15 @@ class OperateLine {
             let c = 0;
             let colIdx = 0;
             while (c < cells.length) {
-              while (blockedUntil[colIdx] > r) colIdx++;
+              while (blockedUntil[colIdx] > r) colIdx++; // On saute les cases occupées par un rowspan
               const currentCell = cells[c];
               const colspan = parseInt(currentCell.getAttribute('colspan')) || 1;
               const rowspan = parseInt(currentCell.getAttribute('rowspan')) || 1;
               if (rowspan > 1) {
                 for (let k = 0; k < colspan; k++) blockedUntil[colIdx + k] = r + rowspan;
               }
+              // On applique la largeur uniquement aux cellules de la toute dernière colonne visuelle
               if (colIdx + colspan >= maxCols) {
-                // On applique newW qui est constant
                 applyWidth(currentCell, newW, `R${r}-Last`);
               }
               colIdx += colspan;
@@ -473,13 +491,15 @@ class OperateLine {
           }
         }
       }
+      // Redimensionnement d'une bordure interne
       else {
 
         const rows = Array.from(tableNode.rows);
         const blockedUntil: number[] = [];
 
-        // On va stocker ici la largeur calculée sur la PREMIÈRE ligne valide.
-        // Toutes les lignes suivantes devront obéir à ces valeurs exactes.
+        // masterWidths stocke la décision de redimensionnement de la PREMIÈRE ligne.
+        // Les lignes suivantes copieront exactement ces valeurs pour garder la colonne droite 
+        // et éviter les effets "d'escalier" si certaines cellules ont un padding différent.
         let masterWidths: { w1: number, w2: number } | null = null;
         for (let r = 0; r < rows.length; r++) {
           const row = rows[r];
@@ -489,6 +509,7 @@ class OperateLine {
           let leftCell: Element | null = null;
           let rightCell: Element | null = null;
 
+          // Parsing de la grille virtuelle
           while (c < cells.length) {
             while (blockedUntil[colIdx] > r) colIdx++;
             const currentCell = cells[c];
@@ -497,6 +518,8 @@ class OperateLine {
             if (rowspan > 1) {
               for (let k = 0; k < colspan; k++) blockedUntil[colIdx + k] = r + rowspan;
             }
+
+            // On identifie qui est à gauche et à droite de la bordure manipulée (colSum)
             if (colIdx + colspan === colSum) leftCell = currentCell;
             if (colIdx === colSum) rightCell = currentCell;
             colIdx += colspan;
@@ -530,7 +553,7 @@ class OperateLine {
               newW2 = totalLogical - newW1;
 
               masterWidths = { w1: newW1, w2: newW2 };
-            } else {
+            } else { // Lignes suivantes : on copie  les valeurs du parent
               newW1 = masterWidths.w1;
               newW2 = masterWidths.w2;
             }
@@ -539,6 +562,7 @@ class OperateLine {
             applyWidth(rightCell, newW2, `R${r}-D`);
           }
           else if (leftCell && !rightCell) {
+            // si on n'a qu'une cellule à redimensionner
             const leftColspan = parseInt(leftCell.getAttribute('colspan')) || 1;
             const dynamicMinW = MIN_WIDTH * leftColspan;
 
@@ -756,6 +780,15 @@ class OperateLine {
 
     updateTableWidth(tableNode, logicalBounds, Math.round(appliedChangeX));
     tableNode.style.setProperty('min-width', `${newTotalW}px`, 'important');
+
+    tableNode.style.removeProperty('height');
+    tableNode.removeAttribute('height');
+
+    const tempBlot = tableBlot.temporary();
+    if (tempBlot && tempBlot.domNode) {
+      tempBlot.domNode.style.removeProperty('height');
+      tempBlot.domNode.removeAttribute('height');
+    }
   }
 
   // Utilitaire pour appliquer une largeur propre (% ou px)
@@ -780,7 +813,6 @@ class OperateLine {
   setCellVerticalRect(cell: Element, clientY: number) {
     const scale = this.tableBetter.scale || 1;
     const rowspan = ~~cell.getAttribute('rowspan') || 1;
-
     const cellsCollection = rowspan > 1 ? this.getVerticalCells(cell, rowspan) : cell.parentElement.children;
     const cells = Array.from(cellsCollection) as HTMLElement[];
 

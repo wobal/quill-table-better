@@ -882,10 +882,6 @@ class TablePropertiesForm {
       case 'right': Object.assign(attrs, { 'margin-left': 'auto', 'margin-right': '' }); break;
     }
 
-
-    // =========================================================
-    // CORRECTION : LECTURE DES TAILLES INITIALES (UNE SEULE FOIS)
-    // =========================================================
     const initialColWidths: { el: HTMLElement, w: number, minW: number, isCol: boolean }[] = [];
 
     let columnsToResize: HTMLElement[] = [];
