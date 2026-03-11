@@ -6,7 +6,7 @@ import alignMiddleIcon from '../assets/icon/align-middle.svg';
 import alignJustifyIcon from '../assets/icon/align-justify.svg';
 import alignRightIcon from '../assets/icon/align-right.svg';
 import alignTopIcon from '../assets/icon/align-top.svg';
-import { convertUnitToInteger, isValidColor, isValidDimensions } from '../utils';
+import { convertUnitToInteger, isValidColor, isValidThomas } from '../utils';
 
 interface Options {
   type: string;
@@ -238,7 +238,7 @@ function getCellProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('width')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           }
         ]
@@ -270,7 +270,7 @@ function getCellProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('width')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           },
           {
@@ -281,7 +281,7 @@ function getCellProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('height')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           },
           {
@@ -292,7 +292,7 @@ function getCellProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('padding')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           }
         ]
@@ -359,7 +359,7 @@ function getTableProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('width')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           }
         ]
@@ -391,7 +391,7 @@ function getTableProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('width')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           },
           {
@@ -402,7 +402,7 @@ function getTableProperties(attribute: Props, useLanguage: UseLanguageHandler) {
               type: 'text',
               placeholder: useLanguage('height')
             },
-            valid: isValidDimensions,
+            valid: isValidThomas,
             message: useLanguage('dimsMsg')
           },
           {

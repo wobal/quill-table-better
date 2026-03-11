@@ -57,6 +57,7 @@ class CellSelection {
   disabledList: Array<HTMLElement | Element>;
   singleList: Array<HTMLElement | Element>;
   tableBetter: QuillTableBetter;
+
   constructor(quill: Quill, tableBetter: QuillTableBetter) {
     this.quill = quill;
     this.selectedTds = [];
@@ -65,9 +66,61 @@ class CellSelection {
     this.disabledList = [];
     this.singleList = [];
     this.tableBetter = tableBetter;
+    window.addEventListener('keydown', this.handleWindowKeyDown, true);
+    window.addEventListener('compositionstart', this.handleWindowKeyDown, true); // Pour les touches à double action ("^^", "¨¨" ...)
+    window.addEventListener('beforeinput', this.handleWindowKeyDown, true);
     this.quill.root.addEventListener('click', this.handleClick.bind(this));
     this.initDocumentListener();
     this.initWhiteList();
+  }
+
+  handleWindowKeyDown = (e: Event) => {
+    // Si l'événement vient du clavier, on laisse passer les touches de navigation
+    if (e instanceof KeyboardEvent) {
+      const safeKeys = [
+        'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+        'Shift', 'Control', 'Alt', 'Meta', 'Escape',
+        'PageUp', 'PageDown', 'Home', 'End'
+      ];
+      if (safeKeys.includes(e.key)) return;
+
+      // On laisse passer Copier (Ctrl+C) et Tout Sélectionner (Ctrl+A)
+      if ((e.ctrlKey || e.metaKey) && ['c', 'a'].includes(e.key.toLowerCase())) return;
+    }
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+
+    const range = sel.getRangeAt(0);
+    const fragment = range.cloneContents();
+    const selectedCellsCount = fragment.querySelectorAll('td, th').length;
+
+    // La sélection est entièrement dans UNE SEULE cellule -> On laisse faire
+    if (selectedCellsCount === 0) return;
+
+    const anchorNode = sel.anchorNode;
+    const focusNode = sel.focusNode;
+    if (!anchorNode || !focusNode) return;
+
+    const anchor = anchorNode.nodeType === 3 ? anchorNode.parentElement : anchorNode as Element;
+    let table = anchor ? anchor.closest('table') : null;
+
+    if (!table) {
+      const focus = focusNode.nodeType === 3 ? focusNode.parentElement : focusNode as Element;
+      table = focus ? focus.closest('table') : null;
+    }
+
+    // On a identifié un tableau avec PLUSIEURS cellules sélectionnées
+    if (table) {
+      const totalCellsCount = table.querySelectorAll('td, th').length;
+
+      // On bloque la touche
+      if (selectedCellsCount > 0 && selectedCellsCount < totalCellsCount) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }
   }
 
   attach(input: HTMLElement) {
@@ -97,7 +150,7 @@ class CellSelection {
 
   exitTableFocus(block: TableCellChildren, up: boolean) {
     const cell = getCorrectCellBlot(block);
-    if(!cell) return;
+    if (!cell) return;
     const table = cell.table();
     const offset = up ? -1 : table.length();
     const index = table.offset(this.quill.scroll) + offset;
@@ -148,7 +201,7 @@ class CellSelection {
       }
       res = `<tr>${res}</tr>`;
       html += res;
-    } 
+    }
     html = `<table><tbody>${html}</tbody></table>`;
     html = tableBlot.getCopyTable(html);
     const text = this.getText(html);
@@ -335,6 +388,7 @@ class CellSelection {
   }
 
   handleMousedown(e: MouseEvent) {
+    if (e.button !== 0) return; // Ignore right click
     const table = (e.target as Element).closest('table');
     if (!table) return;
     this.tableBetter.tableMenus.destroyTablePropertiesForm();
@@ -347,7 +401,7 @@ class CellSelection {
     startTd.classList.add('ql-cell-focused');
     this.setHeaderRowSwitch();
     this.setMenuDisable('merge');
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       const endTd = (e.target as Element).closest('td,th');
       if (!endTd) return;
@@ -360,6 +414,7 @@ class CellSelection {
       const endCorrectBounds = getCorrectBounds(endTd, this.quill.container);
       const computeBounds = getComputeBounds(startCorrectBounds, endCorrectBounds);
       this.selectedTds = getComputeSelectedTds(computeBounds, table, this.quill.container);
+
       for (const td of this.selectedTds) {
         td.classList && td.classList.add('ql-cell-selected');
       }
@@ -630,12 +685,27 @@ class CellSelection {
   removeSelectedTdContent(td: Element) {
     const tdBlot = Quill.find(td) as TableCell;
     let head = tdBlot.children.head as TableCellBlock;
-    const cellId = head.formats()[TableCellBlock.blotName];
-    const cellBlock = this.quill.scroll.create(TableCellBlock.blotName, cellId);
-    tdBlot.insertBefore(cellBlock, head);
-    while (head) {
-      head.remove();
-      head = head.next;
+
+    try {
+      if (!head || typeof head.formats !== 'function') {
+        console.warn("[removeSelectedTdContent] Head missing or invalid formats", head);
+        return;
+      }
+      const formats = head.formats();
+      if (!formats || !formats[TableCellBlock.blotName]) {
+        console.warn("[removeSelectedTdContent] No ID found in formats. Skipping to avoid Object.keys crash.");
+        return;
+      }
+      const cellId = formats[TableCellBlock.blotName];
+
+      const cellBlock = this.quill.scroll.create(TableCellBlock.blotName, cellId);
+      tdBlot.insertBefore(cellBlock, head);
+      while (head) {
+        head.remove();
+        head = head.next;
+      }
+    } catch (err) {
+      console.error("ERROR in removeSelectedTdContent:", err);
     }
   }
 

@@ -21,7 +21,7 @@ import {
 } from './formats/table';
 import TableHeader from './formats/header';
 import { ListContainer } from './formats/list';
-import { 
+import {
   matchTable,
   matchTableCell,
   matchTableCol,
@@ -66,7 +66,7 @@ class Table extends Module {
   public scale: number;
   public colors: string[];
   public nowarn: boolean;
-  
+
   static keyboardBindings: { [propName: string]: BindingObject };
 
   static register() {
@@ -87,14 +87,60 @@ class Table extends Module {
       'modules/clipboard': TableClipboard
     }, true);
   }
-  
+
   constructor(quill: Quill, options: Options) {
     super(quill, options);
+    quill.clipboard.addMatcher('td, th', matchTableCell);
+    quill.clipboard.addMatcher('td, th', matchTableCell);
     quill.clipboard.addMatcher('td, th', matchTableCell);
     quill.clipboard.addMatcher('tr', matchTable);
     quill.clipboard.addMatcher('col', matchTableCol);
     quill.clipboard.addMatcher('table', matchTableTemporary);
     this.language = new Language(options?.language);
+
+    // Forcer un espace séparateur lors du Copier/Coller d'un tableau
+    quill.clipboard.addMatcher('TABLE', (node, delta) => {
+      delta.ops.unshift({ insert: '\n' });
+      return delta;
+    });
+
+    quill.root.addEventListener('keydown', (e: KeyboardEvent) => {
+      // On n'intervient que sur les touches de suppression
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const range = quill.getSelection();
+        // Si du texte est sélectionné, on laisse faire 
+        if (!range || range.length > 0) return;
+
+        const [line, offset] = quill.getLine(range.index);
+
+        // Vérification de l'environnement (A-t-on un voisin au-dessus ET en-dessous ?)
+        if (line && line.prev && line.next) {
+          const prevName = line.prev.statics?.blotName;
+          const nextName = line.next.statics?.blotName;
+
+          const prevIsTable = prevName === TableContainer.blotName || prevName === TableTemporary.blotName;
+          const nextIsTable = nextName === TableContainer.blotName || nextName === TableTemporary.blotName;
+
+          // Si on est entre tableau
+          if (prevIsTable && nextIsTable) {
+
+            // Si on est au début de la ligne et qu'on fait backspace
+            if (e.key === 'Backspace' && offset === 0) {
+              e.preventDefault(); // Bloqué par le navigateur
+              e.stopPropagation(); // On cache l'action à Quill
+              return;
+            }
+
+            //  Si on est à la fin de la ligne et qu'on fait Suppr
+            if (e.key === 'Delete' && offset === line.length() - 1) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+          }
+        }
+      }
+    }, true); // Le 'true' (Capture phase) permet d'agir avant Quill
     this.cellSelection = new CellSelection(quill, this);
     this.operateLine = new OperateLine(quill, this);
     this.tableMenus = new TableMenus(quill, this);
@@ -198,13 +244,16 @@ class Table extends Module {
         // @ts-expect-error
         const length = tableBlot.length();
         const range = this.quill.getSelection();
-        const minIndex = Math.min(range.index, index);
-        const maxIndex = Math.max(range.index + range.length, index + length);
-        this.quill.setSelection(
-          minIndex,
-          maxIndex - minIndex,
-          Quill.sources.USER
-        );
+        // Le if range c'est Thomas (moi) qui l'a mis pour fix un soucis de bug dans la console.
+        if (range) {
+          const minIndex = Math.min(range.index, index);
+          const maxIndex = Math.max(range.index + range.length, index + length);
+          this.quill.setSelection(
+            minIndex,
+            maxIndex - minIndex,
+            Quill.sources.USER
+          );
+        }
       }
       this.quill.root.removeEventListener('mousemove', handleMouseMove);
       this.quill.root.removeEventListener('mouseup', handleMouseup);
@@ -234,26 +283,63 @@ class Table extends Module {
     const range = this.quill.getSelection(true);
     if (range == null) return;
     if (this.isTable(range)) return;
-    const style = `width: 100%`;
+
+    // 1. détection du voisin (Pour le confort initial)
+    const [line, offset] = this.quill.getLine(range.index);
+    const prev = line.prev;
+    // Est-ce qu'on est collé à un tableau ?
+    const isAdjacentToTable = offset === 0 && prev && (
+      (prev as any).statics.blotName === 'table-container' ||
+      (prev as any).statics.blotName === TableContainer.blotName ||
+      (prev as any).statics.blotName === TableTemporary.blotName
+    );
+
+    // Si on est collé, on met un espace tout de suite
+    const separatorDelta = isAdjacentToTable ? new Delta().insert('\n') : new Delta();
+
+    // préparation du tableau avec un id unique
+    const root = this.quill.root;
+    const computedStyle = getComputedStyle(root);
+    const width = root.clientWidth
+      - parseFloat(computedStyle.paddingLeft || '0')
+      - parseFloat(computedStyle.paddingRight || '0');
+
+    // génération de l'id unique
+    // C'est ça qui va permettre à la protection de fonctionner
+    const uniqueId = `tbl-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+
+    const style = `width: ${width}px`;
+    const tableAttributes = {
+      style,
+      'data-table-id': uniqueId // <--- L'ID est injecté ici
+    };
+
     const formats = this.quill.getFormat(range.index - 1);
-    const [, offset] = this.quill.getLine(range.index);
     const isExtra = !!formats[TableCellBlock.blotName] || offset !== 0;
-    const _offset = isExtra ? 2 : 1;
+    const _offset = (isExtra ? 2 : 1) + (isAdjacentToTable ? 1 : 0);
     const extraDelta = isExtra ? new Delta().insert('\n') : new Delta();
+
+    // Construction et Insertion
     const base = new Delta()
       .retain(range.index)
       .delete(range.length)
+      .concat(separatorDelta)
       .concat(extraDelta)
-      .insert('\n', { [TableTemporary.blotName]: { style } });
+      .insert('\n', { [TableTemporary.blotName]: tableAttributes });
+
     const delta = new Array(rows).fill(0).reduce(memo => {
       const id = tableId();
       return new Array(columns).fill('\n').reduce((memo, text) => {
         return memo.insert(text, {
           [TableCellBlock.blotName]: cellId(),
-          [TableCell.blotName]: { 'data-row': id }
+          [TableCell.blotName]: {
+            'data-row': id,
+            height: '22px'
+          }
         });
       }, memo);
     }, base);
+
     this.quill.updateContents(delta, Quill.sources.USER);
     this.quill.setSelection(range.index + _offset, Quill.sources.SILENT);
     this.showTools();
@@ -438,7 +524,7 @@ function makeTableListHandler(key: string) {
     handler(range: Range, context: Context) {
       const [line] = this.quill.getLine(range.index);
       const cellId = getCellId(line.parent.formats()[line.parent.statics.blotName]);
-      line.replaceWith(TableCellBlock.blotName, cellId);      
+      line.replaceWith(TableCellBlock.blotName, cellId);
     }
   }
 }
