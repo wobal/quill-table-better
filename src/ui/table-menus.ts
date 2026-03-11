@@ -92,7 +92,10 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
           content: useLanguage('insColL'),
           handler() {
             const { leftTd } = this.getSelectedTdsInfo();
-            const bounds = this.table.getBoundingClientRect();
+            const computedStyle = getComputedStyle(this.table);
+            const width = parseFloat(computedStyle.width) || this.table.getBoundingClientRect().width;
+            const bounds = { width } as DOMRect;
+
             this.insertColumn(leftTd, 0);
             updateTableWidth(this.table, bounds, CELL_DEFAULT_WIDTH);
             this.updateMenus();
@@ -102,7 +105,10 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
           content: useLanguage('insColR'),
           handler() {
             const { rightTd } = this.getSelectedTdsInfo();
-            const bounds = this.table.getBoundingClientRect();
+            const computedStyle = getComputedStyle(this.table);
+            const width = parseFloat(computedStyle.width) || this.table.getBoundingClientRect().width;
+            const bounds = { width } as DOMRect;
+
             this.insertColumn(rightTd, 1);
             updateTableWidth(this.table, bounds, CELL_DEFAULT_WIDTH);
             this.updateMenus();
@@ -195,8 +201,23 @@ function getMenusConfig(useLanguage: UseLanguageHandler, menus?: string[]): Menu
       content: useLanguage('tblProps'),
       icon: tableIcon,
       handler(list: HTMLUListElement, tooltip: HTMLDivElement) {
+        const styles = getElementStyle(this.table, TABLE_PROPERTIES)
+        const scale = this.tableBetter.scale || 1;
+
+        // Si ce n'est pas un pourcentage, on prend la taille affichée exacte.
+        if (!styles.width || !styles.width.endsWith('%')) {
+          const rect = this.table.getBoundingClientRect();
+          // On utilise toFixed(2) ou la valeur brute pour éviter les erreurs d'arrondi (Shift)
+          styles.width = `${(rect.width / scale)}px`;
+        }
+
+        if (!styles.height || !styles.height.endsWith('%')) {
+          const rect = this.table.getBoundingClientRect();
+          styles.height = `${(rect.height / scale)}px`
+        }
+
         const attribute = {
-          ...getElementStyle(this.table, TABLE_PROPERTIES),
+          ...styles,
           'align': this.getTableAlignment(this.table)
         };
         this.toggleAttribute(list, tooltip);
@@ -454,7 +475,10 @@ class TableMenus {
 
   deleteColumn(isKeyboard: boolean = false) {
     const { computeBounds, leftTd, rightTd } = this.getSelectedTdsInfo();
-    const bounds = this.table.getBoundingClientRect();
+    const computedStyle = getComputedStyle(this.table);
+    const width = parseFloat(computedStyle.width) || this.table.getBoundingClientRect().width;
+    const bounds = { width } as DOMRect;
+
     const selectTds = getComputeSelectedTds(computeBounds, this.table, this.quill.container, 'column');
     const deleteCols = getComputeSelectedCols(computeBounds, this.table, this.quill.container);
     const tableBlot = (Quill.find(leftTd) as TableCell).table();
@@ -462,7 +486,13 @@ class TableMenus {
     if (isKeyboard && selTds.length !== this.tableBetter.cellSelection.selectedTds.length) return;
     this.tableBetter.cellSelection.updateSelected('column');
     tableBlot.deleteColumn(changeTds, selTds, this.deleteTable.bind(this), deleteCols);
-    updateTableWidth(this.table, bounds, computeBounds.left - computeBounds.right);
+    // Utilisation de la largeur visuelle exacte de la sélection
+    const scale = this.tableBetter.scale || 1;
+    const visualWidthToRemove = computeBounds.right - computeBounds.left;
+    // On convertit en logique pour l'appliquer au style CSS
+    const logicalDiff = visualWidthToRemove / scale;
+
+    updateTableWidth(this.table, bounds, -logicalDiff);
     this.updateMenus();
   }
 
@@ -577,8 +607,8 @@ class TableMenus {
     const tableBounds = getCorrectBounds(table, this.quill.container);
     return (
       tableBounds.width >= bounds.width
-       ? [{ ...tableBounds, left: 0, right: bounds.width }, bounds]
-       : [tableBounds, bounds]
+        ? [{ ...tableBounds, left: 0, right: bounds.width }, bounds]
+        : [tableBounds, bounds]
     );
   }
 
@@ -668,21 +698,27 @@ class TableMenus {
   }
 
   getRefInfo(row: TableRow, right: number) {
+    if (!row) return { id: tableId(), ref: null };
     let ref = null;
-    if (!row) return { id: tableId(), ref };
+
+    // Si la ligne est vide (ou n'a pas de cellules visuelles), ref=null pour append
     let td = row.children.head;
+    if (!td) {
+      return { id: tableId(), ref: null };
+    }
+
     const id = td.domNode.getAttribute('data-row');
     while (td) {
       const { left } = td.domNode.getBoundingClientRect();
       if (Math.abs(left - right) <= DEVIATION) {
         return { id, ref: td };
-        // The nearest cell of a multi-row cell
       } else if (Math.abs(left - right) >= DEVIATION && !ref) {
         ref = td;
       }
       td = td.next;
     }
-    return { id, ref };
+    // Si on dépasse la fin, on renvoie null pour ajouter à la fin
+    return { id, ref: null };
   }
 
   getSelectedTdAttrs(td: HTMLElement) {
@@ -692,6 +728,19 @@ class TableMenus {
       align
         ? { ...getElementStyle(td, CELL_PROPERTIES), 'text-align': align }
         : getElementStyle(td, CELL_PROPERTIES);
+
+    // --- AJOUT : Force la lecture de la valeur visuelle réelle ---
+    // Pour que le gestionnaire affiche toujours la bonne taille
+    const scale = this.tableBetter.scale || 1;
+    const rect = td.getBoundingClientRect();
+
+    if (!attr.width || !attr.width.endsWith('%')) {
+      attr.width = `${(rect.width / scale)}px`;
+    }
+    if (!attr.height || !attr.height.endsWith('%')) {
+      attr.height = `${(rect.height / scale)}px`;
+    }
+
     return attr;
   }
 
@@ -713,6 +762,7 @@ class TableMenus {
     }
     for (const key of Object.keys(attribute)) {
       if (map.has(key)) {
+        if (['border-color', 'border-style', 'border-width'].includes(key)) continue;
         attribute[key] = CELL_DEFAULT_VALUES[key];
       }
     }
@@ -759,9 +809,9 @@ class TableMenus {
 
   getTdsFromMap(map: TableCellMap) {
     return Object.values(Object.fromEntries(map))
-    .reduce((tds: HTMLTableCellElement[], item: HTMLTableCellElement[]) => {
-      return tds.length > item.length ? tds : item;
-    }, []);
+      .reduce((tds: HTMLTableCellElement[], item: HTMLTableCellElement[]) => {
+        return tds.length > item.length ? tds : item;
+      }, []);
   }
 
   handleClick(e: MouseEvent) {
@@ -840,6 +890,8 @@ class TableMenus {
     const tableBlot = leftTdBlot.table();
     const rows = tableBlot.tbody().children as LinkedList<TableRow>;
     const row = leftTdBlot.row();
+
+    // Calculer colspan
     const colspan = row.children.reduce((colspan: number, td: TableCell) => {
       const tdCorrectBounds = getCorrectBounds(td.domNode, this.quill.container);
       if (
@@ -850,12 +902,17 @@ class TableMenus {
       }
       return colspan;
     }, 0);
+
+    let actualRowCount = 0;
+
+    // Calculer rowspan
     const rowspan = rows.reduce((rowspan: number, row: TableRow) => {
       const rowCorrectBounds = getCorrectBounds(row.domNode, this.quill.container);
       if (
         rowCorrectBounds.top >= computeBounds.top &&
         rowCorrectBounds.bottom <= computeBounds.bottom
       ) {
+        actualRowCount++; // Compter chaque ligne dans la sélection
         let minRowspan = Number.MAX_VALUE;
         row.children.forEach((td: TableCell) => {
           const rowspan = ~~td.domNode.getAttribute('rowspan') || 1;
@@ -865,27 +922,82 @@ class TableMenus {
       }
       return rowspan;
     }, 0);
+
+    // Collecter les lignes qui vont être supprimées
+    const deletedRows: Set<TableRow> = new Set();
     let offset = 0;
+
+    // Fusionner et supprimer les cellules sélectionnées
     for (const td of selectedTds) {
       if (leftTd.isEqualNode(td)) continue;
       const blot = Quill.find(td) as TableCell;
+      const parentRow = blot.parent as TableRow;
       blot.moveChildren(leftTdBlot);
       blot.remove();
-      if (!blot.parent?.children?.length) offset++;
+
+      if (!blot.parent?.children?.length) {
+        deletedRows.add(parentRow);
+        offset++;
+      }
     }
-    if (offset) {
-      // Subtract the number of rows deleted by the merge
-      row.children.forEach((child: TableCell) => {
-        if (child.domNode.isEqualNode(leftTd)) return;
-        const rowspan = child.domNode.getAttribute('rowspan');
-        const [formats] = getCellFormats(child);
-        // @ts-expect-error
-        child.replaceWith(child.statics.blotName, { ...formats, rowspan: rowspan - offset });
-      });
+
+    // Si des lignes ont été supprimées, ajuster les cellules adjacentes affectées
+    if (offset > 0 && deletedRows.size > 0) {
+      const allCells = tableBlot.descendants(TableCell);
+      const selectedTdSet = new Set(selectedTds.map(td => Quill.find(td)));
+
+      for (const cell of allCells) {
+        if (selectedTdSet.has(cell)) continue;
+
+        const cellRowspan = ~~cell.domNode.getAttribute('rowspan') || 1;
+        if (cellRowspan <= 1) continue;
+
+        const cellRow = cell.parent as TableRow;
+        let currentRow = cellRow;
+        let affectedRowCount = 0;
+
+        for (let i = 0; i < cellRowspan && currentRow; i++) {
+          if (deletedRows.has(currentRow)) {
+            affectedRowCount++;
+          }
+          currentRow = currentRow.next;
+        }
+
+        if (affectedRowCount > 0) {
+          const newRowspan = cellRowspan - affectedRowCount;
+          const [cellFormats] = getCellFormats(cell);
+
+          if (newRowspan >= 1) {
+            cell.replaceWith(cell.statics.blotName, {
+              ...cellFormats,
+              rowspan: newRowspan === 1 ? null : newRowspan
+            });
+          }
+        }
+      }
     }
+
     leftTdBlot.setChildrenId(cellId);
+
+    const finalRowspan = rowspan - offset;
+
+    if (finalRowspan > 1) {
+      delete formats['height'];
+      if (formats['style']) {
+        // Supprime proprement "height: ...;" dans la chaîne de style
+        formats['style'] = formats['style'].replace(/height\s*:\s*[^;]+;?/gi, '');
+      }
+    }
+
+    // Stocker le nombre de lignes originales pour permettre un split correct
     // @ts-expect-error
-    head.format(leftTdBlot.statics.blotName, { ...formats, colspan, rowspan: rowspan - offset });
+    head.format(leftTdBlot.statics.blotName, {
+      ...formats,
+      colspan,
+      rowspan: rowspan - offset,
+      'data-original-rowspan': actualRowCount  // Mémoriser le nombre de lignes
+    });
+
     this.tableBetter.cellSelection.setSelected(head.parent.domNode);
     this.quill.scrollSelectionIntoView();
   }
@@ -921,57 +1033,121 @@ class TableMenus {
     this.root.classList.remove('ql-hidden');
   }
 
+
   splitCell() {
     const { selectedTds } = this.tableBetter.cellSelection;
     const { leftTd } = this.getSelectedTdsInfo();
     const leftTdBlot = Quill.find(leftTd) as TableCell;
     const head = leftTdBlot.children.head;
+
     for (const td of selectedTds) {
-      const colspan = ~~td.getAttribute('colspan') || 1;
-      const rowspan = ~~td.getAttribute('rowspan') || 1;
-      if (colspan === 1 && rowspan === 1) continue;
-      const columnCells: [TableRow, string, TableCell | null][] = [];
-      const { width, right } = td.getBoundingClientRect();
+      const element = td as HTMLElement;
+      const colspan = ~~element.getAttribute('colspan') || 1;
+      const rowspan = ~~element.getAttribute('rowspan') || 1;
+      const originalRowspan = ~~element.getAttribute('data-original-rowspan') || rowspan;
+
+      if (colspan === 1 && rowspan === 1 && originalRowspan === 1) continue;
+
+      const { right } = element.getBoundingClientRect();
       const blot = Quill.find(td) as TableCell;
       const tableBlot = blot.table();
       const nextBlot = blot.next;
       const rowBlot = blot.row();
-      if (rowspan > 1) {
-        if (colspan > 1) {
-          let nextRowBlot = rowBlot.next;
-          for (let i = 1; i < rowspan; i++) {
-            const { ref, id } = this.getRefInfo(nextRowBlot, right);
-            for (let j = 0; j < colspan; j++) {
-              columnCells.push([nextRowBlot, id, ref]);
-            }
-            nextRowBlot && (nextRowBlot = nextRowBlot.next);
+
+      // 1. Calcul des lignes manquantes 
+      const rowsToCreate = Math.max(0, originalRowspan - rowspan);
+
+      if (rowsToCreate > 0) {
+        let insertAfterRow = rowBlot;
+        // A. Création des lignes
+        for (let i = 0; i < rowsToCreate; i++) {
+          const newRow = this.quill.scroll.create(TableRow.blotName) as TableRow;
+          if (insertAfterRow && insertAfterRow.next) {
+            rowBlot.parent.insertBefore(newRow, insertAfterRow.next);
+          } else {
+            rowBlot.parent.insertBefore(newRow, null);
           }
-        } else {
-          let nextRowBlot = rowBlot.next;
-          for (let i = 1; i < rowspan; i++) {
-            const { ref, id } = this.getRefInfo(nextRowBlot, right);
-            columnCells.push([nextRowBlot, id, ref]);
-            nextRowBlot && (nextRowBlot = nextRowBlot.next);
+          insertAfterRow = newRow;
+        }
+
+        // B. Agrandissement des voisins
+        const allCells = tableBlot.descendants(TableCell);
+        const allRows = tableBlot.descendants(TableRow);
+        const splitRowIndex = allRows.indexOf(rowBlot);
+
+        for (const cell of allCells) {
+          if (cell.domNode === td) continue;
+          const cellRow = cell.parent as TableRow;
+          const cellStart = allRows.indexOf(cellRow);
+          const cellSpan = ~~cell.domNode.getAttribute('rowspan') || 1;
+          const cellEnd = cellStart + cellSpan;
+
+          if (cellStart <= splitRowIndex && cellEnd > splitRowIndex) {
+            const newSpan = cellSpan + rowsToCreate;
+            const blotName = cell.statics.blotName;
+            const currentFormats = cell.formats()[blotName];
+            cell.replaceWith(blotName, { ...currentFormats, rowspan: String(newSpan) });
           }
         }
       }
+
+      // 2. Préparation des styles à copier 
+      // On récupère les styles de la cellule parente pour que les enfants soient identiques
+      const [originalFormats] = getCellFormats(blot);
+      const inheritedFormats = { ...originalFormats };
+      // On retire les attributs de structure pour ne garder que le style (border, color...)
+      delete inheritedFormats.colspan;
+      delete inheritedFormats.rowspan;
+      delete inheritedFormats.width;
+      delete inheritedFormats.height;
+      delete inheritedFormats['data-original-rowspan'];
+
+      // 3. Préparation de l'insertion
+      const columnCells: [TableRow, string, TableCell | null][] = [];
+
+      if (originalRowspan > 1) {
+        let nextRowBlot = rowBlot.next;
+        const loopCount = (originalRowspan > 1) ? originalRowspan : 1;
+
+        for (let i = 1; i < loopCount; i++) {
+          if (!nextRowBlot) break;
+          const { ref, id } = this.getRefInfo(nextRowBlot, right);
+          const colsToAdd = (colspan > 1) ? colspan : 1;
+          for (let j = 0; j < colsToAdd; j++) {
+            columnCells.push([nextRowBlot, id, ref]);
+          }
+          nextRowBlot = nextRowBlot.next;
+        }
+      }
+
       if (colspan > 1) {
-        const id = td.getAttribute('data-row');
+        const id = element.getAttribute('data-row');
         for (let i = 1; i < colspan; i++) {
           columnCells.push([rowBlot, id, nextBlot]);
         }
       }
+
+      // 4. Insertion et Application des Styles
       for (const [row, id, ref] of columnCells) {
-        tableBlot.insertColumnCell(row, id, ref);
+        const newCell = tableBlot.insertColumnCell(row, id, ref);
+        if (newCell) {
+          // On applique les styles hérités (bordures, etc.) mais SANS largeur forcée
+          newCell.replaceWith(newCell.statics.blotName, {
+            ...inheritedFormats,
+            'data-row': id // On s'assure que l'ID de ligne reste correct
+          });
+        }
       }
-      const [formats] = getCellFormats(blot);
+
+      // 5. Reset de la cellule principale avec styles conservés
       blot.replaceWith(blot.statics.blotName, {
-        ...formats,
-        width: ~~(width / colspan),
+        ...inheritedFormats, // Conserve les bordures/styles
         colspan: null,
-        rowspan: null
+        rowspan: null,
+        'data-original-rowspan': null
       });
     }
+
     this.tableBetter.cellSelection.setSelected(head.parent.domNode);
     this.quill.scrollSelectionIntoView();
   }
