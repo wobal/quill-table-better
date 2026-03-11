@@ -5,17 +5,17 @@ on:
     branches: [ "main", "operate-scale" ]
     paths:
       - 'src/**'
-  workflow_dispatch:
+
+  workflow_dispatch: # Ajout pour permettre le déclenchement manuel
     inputs:
       version:
-        description: 'Version to publish (e.g., 1.0.0)'
+        description: 'Version to publish (e.g., 1.0.0, 1.0.0-beta.1)'
         required: true
         type: string
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,8 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
-          # registry-url est important ici pour la création auto du .npmrc
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: npm install
@@ -33,23 +31,33 @@ jobs:
       - name: Compile with Webpack
         run: npm run build
 
-      - name: Force package name
+      - name: Force package name for npm publish
         run: |
           node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8')); pkg.name = 'wobal-quill-table-better'; fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2));"
+          echo "Package name forced to wobal-quill-table-better for publication."
+        
+      - name: Get current package.json version
+        id: get_version
+        run: |
+          # Lit la version actuelle du package.json et la met dans une variable de sortie
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current package.json version: $CURRENT_VERSION"
 
-      - name: Update version (Only if manual dispatch)
-        # On vérifie que l'event est bien manuel avant de changer la version
-        if: github.event_name == 'workflow_dispatch'
-        run: npm version ${{ github.event.inputs.version }} --no-git-tag-version
+      - name: Update package.json version (if different)
+        if: ${{ github.event.inputs.version != steps.get_version.outputs.current_version }}
+        run: |
+          echo "Attempting to update version from ${{ steps.get_version.outputs.current_version }} to ${{ github.event.inputs.version }}"
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+        
+      - name: Authenticate with npm
+        run: |
+          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
-        run: |
-          # On configure le token dynamiquement
-          npm config set //registry.npmjs.org/:_authToken=${NPM_TOKEN}
-          # On ajoute --access public au cas où npm considère "wobal-" comme un scope privé
-          npm publish --access public
+        run: npm publish
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
